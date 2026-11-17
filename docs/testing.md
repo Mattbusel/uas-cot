@@ -23,6 +23,19 @@
   with [takproto](https://pypi.org/project/takproto/) and read back; uid,
   type, position, callsign, course and speed must survive:
   `python tools/takproto_check.py tests/data/expected/*.cot`.
+- `tests/mavlink_m.rs` (feature `mavlink-m`):
+  - `CRC_EXTRA`, base length and full length of all 35 MAVLink-M messages
+    against pymavlink 2.4.50 (`tests/data/mavlink_m_reference.txt`);
+  - every CoT type the gateway can emit against the MIL-STD-2525B change 2
+    function tables (`tests/data/2525b_function_ids.txt`, from the MIT
+    tables in spatialillusions/mil-std-2525 0.2.8);
+  - handover and identity joined by track UID, PPLI and TARGET mapping, and
+    that engagement fields never reach the XML;
+  - the checker on good frames and on each kind of error;
+  - `uas2cot tlog` and `mavlinkm-check tlog` on a log with vehicle
+    telemetry, MAVLink-M traffic and one corrupt message.
+- CI runs the simulated MAVLink-M scenario end to end and validates its CoT
+  against the MITRE schemas and takproto.
 - Unit tests: XML escaping, time formatting, angle normalisation, MAVLink
   payload trimming, UDP and TCP delivery.
 

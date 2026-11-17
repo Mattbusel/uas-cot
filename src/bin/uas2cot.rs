@@ -6,6 +6,10 @@
 //! uas2cot pcap <file.pcap>  Wi-Fi monitor-mode capture with Remote ID beacons / NAN (radiotap or 802.11)
 //! uas2cot mavlink-udp <bind addr>   live MAVLink over UDP, for example 0.0.0.0:14550
 //!
+//! Built with the `mavlink-m` feature, `tlog` and `mavlink-udp` also turn
+//! MAVLink-M (military.xml) TRACK_IDENTITY, TARGET_HANDOVER,
+//! PARTICIPANT_POSITION and TARGET messages into CoT.
+//!
 //! options:
 //!   --udp <addr>       send each event as a UDP datagram (239.2.3.1:6969 is the TAK SA multicast group)
 //!   --tcp <addr>       send to a TAK Server TCP streaming input, for example takserver:8087
@@ -130,14 +134,68 @@ fn run_klv(a: &mut Args) -> io::Result<usize> {
     Ok(n)
 }
 
+/// Per-stream MAVLink state: vehicle types and, with `mavlink-m`, the
+/// MAVLink-M gateway.
+struct MavState {
+    opts: mavlink::Options,
+    types: [Option<u8>; 256],
+    #[cfg(feature = "mavlink-m")]
+    gw: uas_cot::mavlink_m::Gateway,
+}
+
+impl MavState {
+    fn new(affiliation: Option<char>) -> Self {
+        let mut opts = mavlink::Options::default();
+        if let Some(c) = affiliation {
+            opts.affiliation = c;
+        }
+        MavState {
+            opts,
+            types: [None; 256],
+            #[cfg(feature = "mavlink-m")]
+            gw: uas_cot::mavlink_m::Gateway::default(),
+        }
+    }
+
+    /// The event for one frame, if it makes one.
+    fn frame(&mut self, frame: &mavlink_tlog::FrameRef<'_>, ts: u64) -> Option<Event> {
+        let sys = frame.sys_id();
+        match frame.msg_id() {
+            mavlink::HEARTBEAT_ID if frame.comp_id() == 1 => {
+                self.types[sys as usize] = mavlink::heartbeat_mav_type(frame.payload());
+                None
+            }
+            mavlink::GLOBAL_POSITION_INT_ID => {
+                let pos = mavlink::GlobalPositionInt::parse(frame.payload())?;
+                mavlink::vehicle(sys, &pos, self.types[sys as usize], ts, &self.opts)
+            }
+            #[cfg(feature = "mavlink-m")]
+            id => self.gw.ingest(sys, id, frame.payload(), ts),
+            #[cfg(not(feature = "mavlink-m"))]
+            _ => None,
+        }
+    }
+}
+
+/// CRC_EXTRA lookup: the built-in common/ardupilot table, then MAVLink-M.
+fn crc_extra(id: u32) -> Option<u8> {
+    if let Some(i) = mavlink_tlog::message_info(id) {
+        return Some(i.crc_extra);
+    }
+    #[cfg(feature = "mavlink-m")]
+    {
+        uas_cot::mavlink_m::crc_extra(id)
+    }
+    #[cfg(not(feature = "mavlink-m"))]
+    {
+        None
+    }
+}
+
 fn run_tlog(a: &mut Args) -> io::Result<usize> {
     let file = std::fs::File::open(&a.input)?;
     let mut reader = mavlink_tlog::TlogReader::new(io::BufReader::new(file));
-    let mut opts = mavlink::Options::default();
-    if let Some(c) = a.affiliation {
-        opts.affiliation = c;
-    }
-    let mut types = [None::<u8>; 256];
+    let mut st = MavState::new(a.affiliation);
     let mut pacer = Pacer {
         first: None,
         on: a.realtime,
@@ -145,21 +203,16 @@ fn run_tlog(a: &mut Args) -> io::Result<usize> {
     let mut n = 0;
     while let Some(rec) = reader.next_record()? {
         let (ts, frame) = (rec.timestamp_us, rec.frame);
-        let sys = frame.sys_id();
-        match frame.msg_id() {
-            mavlink::HEARTBEAT_ID if frame.comp_id() == 1 => {
-                types[sys as usize] = mavlink::heartbeat_mav_type(frame.payload())
-            }
-            mavlink::GLOBAL_POSITION_INT_ID => {
-                if let Some(pos) = mavlink::GlobalPositionInt::parse(frame.payload()) {
-                    if let Some(e) = mavlink::vehicle(sys, &pos, types[sys as usize], ts, &opts) {
-                        pacer.wait(ts);
-                        a.sink.send(&e)?;
-                        n += 1;
-                    }
-                }
-            }
-            _ => {}
+        if frame
+            .check(mavlink_tlog::CrcPolicy::Custom(crc_extra))
+            .is_err()
+        {
+            continue;
+        }
+        if let Some(e) = st.frame(&frame, ts) {
+            pacer.wait(ts);
+            a.sink.send(&e)?;
+            n += 1;
         }
     }
     Ok(n)
@@ -167,40 +220,24 @@ fn run_tlog(a: &mut Args) -> io::Result<usize> {
 
 fn run_mavlink_udp(a: &mut Args) -> io::Result<usize> {
     let sock = std::net::UdpSocket::bind(&a.input)?;
-    let mut opts = mavlink::Options::default();
-    if let Some(c) = a.affiliation {
-        opts.affiliation = c;
-    }
-    let mut types = [None::<u8>; 256];
+    let mut st = MavState::new(a.affiliation);
     let mut buf = [0u8; 2048];
     loop {
         let len = sock.recv(&mut buf)?;
         let mut data = &buf[..len];
         while !data.is_empty() {
-            let Ok(frame) = mavlink_tlog::FrameRef::parse(data, mavlink_tlog::CrcPolicy::Strict)
-            else {
+            let Ok(frame) = mavlink_tlog::FrameRef::parse_unchecked(data) else {
                 break;
             };
             data = &data[frame.len()..];
-            let sys = frame.sys_id();
-            match frame.msg_id() {
-                mavlink::HEARTBEAT_ID if frame.comp_id() == 1 => {
-                    types[sys as usize] = mavlink::heartbeat_mav_type(frame.payload())
-                }
-                mavlink::GLOBAL_POSITION_INT_ID => {
-                    if let Some(pos) = mavlink::GlobalPositionInt::parse(frame.payload()) {
-                        if let Some(e) = mavlink::vehicle(
-                            sys,
-                            &pos,
-                            types[sys as usize],
-                            uas_cot::now_us(),
-                            &opts,
-                        ) {
-                            a.sink.send(&e)?;
-                        }
-                    }
-                }
-                _ => {}
+            if frame
+                .check(mavlink_tlog::CrcPolicy::Custom(crc_extra))
+                .is_err()
+            {
+                continue;
+            }
+            if let Some(e) = st.frame(&frame, uas_cot::now_us()) {
+                a.sink.send(&e)?;
             }
         }
     }

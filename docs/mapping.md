@@ -50,6 +50,11 @@ type `b-m-p-s-p-i`, how `m-i`, at the frame center (23, 24; height 78, else
 | `remarks` | height above home (`relative_alt`) |
 | stale | 15 s |
 
+## MAVLink-M (`mavlink_m`, feature `mavlink-m`)
+
+See [mavlink-m.md](mavlink-m.md) for the full table, the fields that are
+never translated, and the conformance checks.
+
 ## Heights
 
 CoT `hae` is height above the WGS84 ellipsoid. When a source only gives
