@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Combines the MITRE CoT public release schemas (base event + detail sub-schemas) for validation. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:include schemaLocation="base-event.xsd"/>
+  <xs:include schemaLocation="contact.xsd"/>
+  <xs:include schemaLocation="track.xsd"/>
+  <xs:include schemaLocation="sensor.xsd"/>
+  <xs:include schemaLocation="link.xsd"/>
+  <xs:include schemaLocation="remarks.xsd"/>
+</xs:schema>

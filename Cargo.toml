@@ -1,0 +1,39 @@
+[package]
+name = "uas-cot"
+version = "0.1.0"
+authors = ["Matt Busel <matt@busel.dev>"]
+edition = "2021"
+rust-version = "1.70"
+description = "Drone telemetry to Cursor on Target (CoT) for TAK: Remote ID, MISB ST 0601 KLV (STANAG 4609 video) and MAVLink to ATAK/WinTAK/TAK Server, with the uas2cot command line bridge"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Mattbusel/uas-cot"
+homepage = "https://github.com/Mattbusel/uas-cot"
+documentation = "https://docs.rs/uas-cot"
+readme = "README.md"
+keywords = ["cot", "tak", "remote-id", "mavlink", "misb"]
+categories = ["aerospace::drones", "aerospace::protocols", "command-line-utilities", "network-programming"]
+exclude = ["tests/data/*", "tests/schema/*", ".github", "tools"]
+
+[features]
+default = ["remoteid", "misb", "cli"]
+## Remote ID to CoT (`rid` module).
+remoteid = ["dep:remoteid"]
+## MISB ST 0601 KLV to CoT (`fmv` module).
+misb = ["dep:misb"]
+## The `uas2cot` binary (needs remoteid, misb and mavlink-tlog).
+cli = ["remoteid", "misb", "dep:mavlink-tlog"]
+
+[dev-dependencies]
+mavlink-tlog = "0.1"
+
+[dependencies]
+remoteid = { version = "0.1", optional = true }
+misb = { version = "0.1", optional = true }
+mavlink-tlog = { version = "0.1", optional = true }
+
+[[bin]]
+name = "uas2cot"
+required-features = ["cli"]
+
+[package.metadata.docs.rs]
+all-features = true
