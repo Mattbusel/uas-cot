@@ -112,7 +112,7 @@ impl Field {
 pub struct Message {
     /// Message id.
     pub id: u32,
-    /// Message name, for example `TARGET_HANDOVER`.
+    /// Message name, for example `PARTICIPANT_POSITION`.
     pub name: String,
     /// Description text.
     pub description: String,
@@ -133,14 +133,29 @@ impl Message {
         self.fields.iter().find(|f| f.name == name)
     }
 
+    /// True if this message is out of scope (target, track, handover,
+    /// fires, munition, arming, weapon or engagement, see
+    /// [`super::scope`]). Its fields are never decoded or encoded.
+    pub fn is_blocked(&self) -> bool {
+        super::scope::is_blocked(self.id, &self.name)
+    }
+
     /// Decodes field `name` from `payload`. MAVLink 2 trims trailing zero
-    /// bytes, so missing bytes read as zero.
+    /// bytes, so missing bytes read as zero. `None` for a blocked message
+    /// ([`Message::is_blocked`]).
     pub fn get(&self, payload: &[u8], name: &str) -> Option<Value> {
+        if self.is_blocked() {
+            return None;
+        }
         self.field(name).map(|f| decode_field(f, payload))
     }
 
-    /// Decodes every field, in wire order.
+    /// Decodes every field, in wire order. Empty for a blocked message
+    /// ([`Message::is_blocked`]).
     pub fn decode(&self, payload: &[u8]) -> Vec<(&Field, Value)> {
+        if self.is_blocked() {
+            return Vec::new();
+        }
         self.fields
             .iter()
             .map(|f| (f, decode_field(f, payload)))
@@ -148,8 +163,15 @@ impl Message {
     }
 
     /// Encodes `values` (by field name) into a full-length payload; fields
-    /// not given are zero. Unknown names and wrong value kinds are errors.
+    /// not given are zero. Unknown names and wrong value kinds are errors,
+    /// and so is a blocked message ([`Message::is_blocked`]).
     pub fn encode(&self, values: &[(&str, Value)]) -> Result<Vec<u8>, Error> {
+        if self.is_blocked() {
+            return Err(Error(format!(
+                "{} is out of scope (targeting or engagement) and is not encoded",
+                self.name
+            )));
+        }
         let mut out = vec![0u8; self.max_len];
         for (name, v) in values {
             let f = self

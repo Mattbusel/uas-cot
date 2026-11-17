@@ -1,21 +1,21 @@
 //! A scripted MAVLink + MAVLink-M emitter for trying the gateway without
-//! hardware. Every message it sends is synthetic and marked as simulation
-//! (`sidc_context = SIMULATION`), around the PX4 SITL default home
-//! (47.397742, 8.545594).
+//! hardware. Every message it sends is synthetic, around the PX4 SITL
+//! default home (47.397742, 8.545594).
 //!
 //! Two friendly aircraft (system 1, a quadrotor; system 2, a fixed wing)
 //! send HEARTBEAT and GLOBAL_POSITION_INT. System 1 relays a friendly
-//! ground team (system 3) with MAVLink-M PARTICIPANT_POSITION, and tracks a
-//! ground vehicle: TRACK_IDENTITY gives its identity and TARGET_HANDOVER
-//! passes its kinematics to system 2.
+//! ground team (system 3) and system 2 relays a friendly survey boat
+//! (system 4) with MAVLink-M PARTICIPANT_POSITION. That is all: the
+//! scenario is position and telemetry interoperability, and uas-cot
+//! refuses every target, track, fires or engagement message.
 //!
 //! ```text
 //! cargo run --example mavlink_m_sim --features mavlink-m -- --tlog demo.tlog [--secs 60] [--fault]
 //! cargo run --example mavlink_m_sim --features mavlink-m -- --udp 127.0.0.1:14550 [--secs 60] [--fault]
 //! ```
 //!
-//! `--fault` also sends one TRACK_IDENTITY whose `pid_status` holds a value
-//! the dialect does not define, for the conformance checker to catch.
+//! `--fault` also sends one PARTICIPANT_POSITION whose `ppli_type` holds a
+//! value the dialect does not define, for the conformance checker to catch.
 
 use mavlink_tlog::{encode, Header, TlogWriter, Version};
 use std::io;
@@ -24,9 +24,6 @@ use uas_cot::mavlink_m::{self, Value};
 
 const HOME: (f64, f64) = (47.397742, 8.545594);
 const LOG_T0_US: u64 = 1_763_400_000_000_000; // 2025-11-17T17:20:00Z, a fixed start so logs are reproducible
-const TRACK_UID: [u8; 16] = [
-    0x5e, 0x1d, 0x0c, 0x41, 0x9a, 0x2b, 0x4c, 0x8e, 0x91, 0x3f, 0x60, 0x7d, 0x22, 0xa4, 0x18, 0xb3,
-];
 
 /// Offsets in metres to degrees around HOME.
 fn geo(north: f64, east: f64) -> (f64, f64) {
@@ -108,7 +105,7 @@ fn step(out: &mut Out, t0_us: u64, t: f64, fault: bool) {
     let t_ms = (t * 1000.0) as u32;
     let ground_alt = 488.0;
 
-    // system 1: quadrotor orbiting the ground vehicle's road at 300 m radius
+    // system 1: quadrotor orbiting home at 300 m radius
     let w = 2.0 * std::f64::consts::PI / 90.0;
     let (n1, e1) = (300.0 * (w * t).cos(), 300.0 * (w * t).sin());
     let (vn1, ve1) = (-300.0 * w * (w * t).sin(), 300.0 * w * (w * t).cos());
@@ -118,9 +115,6 @@ fn step(out: &mut Out, t0_us: u64, t: f64, fault: bool) {
     let ve2 = 1200.0 * 2.0 * std::f64::consts::PI / 120.0
         * (2.0 * std::f64::consts::PI * t / 120.0).cos();
     let (lat2, lon2) = geo(1500.0, x2);
-    // ground vehicle: driving north-east along a straight road at 8 m/s
-    let (nv, ev) = (-400.0 + 8.0 * t * 0.6, -300.0 + 8.0 * t * 0.8);
-    let (latv, lonv) = geo(nv, ev);
 
     if (t * 10.0).round() as i64 % 10 == 0 {
         out.push(1, 0, &heartbeat(2), 50);
@@ -164,84 +158,44 @@ fn step(out: &mut Out, t0_us: u64, t: f64, fault: bool) {
         );
     }
 
-    // identity every 5 s
-    if (t * 10.0).round() as i64 % 50 == 0 {
-        out.m(
-            1,
-            "TRACK_IDENTITY",
-            &[
-                ("time_usec", Value::Uint(now_us)),
-                (
-                    "track_uid",
-                    Value::Array(TRACK_UID.iter().map(|&b| Value::Uint(b as u64)).collect()),
-                ),
-                ("first_detected_usec", Value::Uint(t0_us)),
-                ("id_confidence", Value::Float(0.72)),
-                ("origin_sysid", Value::Uint(1)),
-                ("origin_sensor", Value::Uint(1)), // VISUAL_EO
-                ("id_method", Value::Uint(1)),     // VISUAL_EO
-                ("pid_status", Value::Uint(1)),    // TENTATIVE
-                ("target_class", Value::Uint(5)),  // LIGHT_TACTICAL_VEHICLE
-                ("target_force", Value::Uint(0)),  // UNKNOWN
-                (
-                    "id_basis",
-                    Value::Text("SIM: EO track, pickup truck".into()),
-                ),
-                ("stanag_identity", Value::Uint(5)), // SUSPECT
-                ("environment", Value::Uint(5)),     // LAND
-                ("atr_confidence_pct", Value::Uint(255)),
-                ("sidc_context", Value::Uint(2)), // SIMULATION
-            ],
-        );
-    }
-    // handover to system 2 every second
     if (t * 10.0).round() as i64 % 10 == 5 {
+        // a friendly survey boat 1.8 km north-east (synthetic),
+        // relayed by system 2
+        let (nb, eb) = (1800.0, 900.0 - 2.0 * t);
+        let (latb, lonb) = geo(nb, eb);
         out.m(
-            1,
-            "TARGET_HANDOVER",
+            2,
+            "PARTICIPANT_POSITION",
             &[
                 ("time_usec", Value::Uint(now_us)),
-                ("target_system", Value::Uint(2)),
-                ("target_component", Value::Uint(0)),
-                ("detected_first_usec", Value::Uint(t0_us)),
-                ("valid_until_usec", Value::Uint(now_us + 10_000_000)),
-                ("lat", deg_e7(latv)),
-                ("lon", deg_e7(lonv)),
-                ("alt", Value::Float(ground_alt)),
-                ("vx", Value::Float(8.0 * 0.6)),
-                ("vy", Value::Float(8.0 * 0.8)),
+                ("lat", deg_e7(latb)),
+                ("lon", deg_e7(lonb)),
+                ("alt", Value::Float(406.0)),
+                ("vx", Value::Float(0.0)),
+                ("vy", Value::Float(-2.0)),
                 ("vz", Value::Float(0.0)),
-                ("cov_pos_x", Value::Float(25.0)),
-                ("cov_pos_y", Value::Float(16.0)),
-                ("cov_pos_z", Value::Float(9.0)),
-                ("target_name", Value::Text("SIM TRUCK".into())),
-                ("confidence_score", Value::Float(0.72)),
-                ("target_class", Value::Uint(5)),
-                ("target_force", Value::Uint(0)),
-                (
-                    "track_uid",
-                    Value::Array(TRACK_UID.iter().map(|&b| Value::Uint(b as u64)).collect()),
-                ),
+                ("course", Value::Float(f64::NAN)),
+                ("callsign", Value::Text("HERON 4".into())),
+                ("origin_sysid", Value::Uint(4)),
+                ("stanag_identity", Value::Uint(3)), // FRIEND
+                ("ppli_type", Value::Uint(3)),       // SURFACE
             ],
         );
     }
     if fault && (t * 10.0).round() as i64 == 125 {
+        let (latg, long) = geo(-650.0 + 1.2 * t, 250.0);
         out.m(
             1,
-            "TRACK_IDENTITY",
+            "PARTICIPANT_POSITION",
             &[
                 ("time_usec", Value::Uint(now_us)),
-                (
-                    "track_uid",
-                    Value::Array(TRACK_UID.iter().map(|&b| Value::Uint(b as u64)).collect()),
-                ),
-                ("pid_status", Value::Uint(9)), // not defined in MAVLINK_M_PID_STATUS
-                ("stanag_identity", Value::Uint(5)),
-                ("environment", Value::Uint(5)),
-                ("target_class", Value::Uint(5)),
-                ("atr_confidence_pct", Value::Uint(255)),
-                ("id_confidence", Value::Float(0.72)),
-                ("sidc_context", Value::Uint(2)),
+                ("lat", deg_e7(latg)),
+                ("lon", deg_e7(long)),
+                ("alt", Value::Float(ground_alt)),
+                ("callsign", Value::Text("ANVIL 3".into())),
+                ("origin_sysid", Value::Uint(3)),
+                ("stanag_identity", Value::Uint(3)),
+                ("ppli_type", Value::Uint(9)), // not defined in MAVLINK_M_PPLI_TYPE
             ],
         );
     }

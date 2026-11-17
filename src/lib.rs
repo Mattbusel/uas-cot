@@ -6,7 +6,7 @@
 //! | Drone Remote ID (ASTM F3411 / EN 4709-002) via the [`remoteid`](https://docs.rs/remoteid) crate | [`rid`] | the aircraft, and its operator |
 //! | MISB ST 0601 KLV from drone video via the [`misb`](https://docs.rs/misb) crate | [`fmv`] | the platform with its sensor field of view, and the sensor point of interest |
 //! | MAVLink `GLOBAL_POSITION_INT` / `HEARTBEAT` payloads | [`mavlink`] | the vehicle |
-//! | MAVLink-M (`military.xml`) `TRACK_IDENTITY`, `TARGET_HANDOVER`, `PARTICIPANT_POSITION`, `TARGET`, feature `mavlink-m` | `mavlink_m` | shared tracks and friendly position reports, plus a conformance checker |
+//! | MAVLink-M (`military.xml`) `PARTICIPANT_POSITION`, feature `mavlink-m` | `mavlink_m` | friendly position reports, plus a framing and checksum checker; target, track, fires and engagement messages are refused |
 //!
 //! [`Event`] is the CoT 2.0 event model; [`Event::to_xml`] writes the XML
 //! that TAK clients and servers accept (validated against the MITRE public

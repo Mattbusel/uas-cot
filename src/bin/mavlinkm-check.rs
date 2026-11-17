@@ -12,8 +12,12 @@
 //!   --count <n>               udp: stop after n MAVLink-M messages
 //! ```
 //!
-//! Only MAVLink-M messages (ids 53000 to 53999) are checked. The exit code
-//! is 1 if any of them has an error, 2 for usage or input errors.
+//! Only MAVLink-M messages (ids 53000 to 53999) are checked. Every one gets
+//! the frame checks (id, length, checksum). Field checks (enums, bitmasks,
+//! ranges) run only on in-scope messages; target, track, handover, fires,
+//! munition, arming, weapon and engagement messages are never decoded and
+//! their fields are never printed (see `uas_cot::mavlink_m::scope`). The
+//! exit code is 1 if any message has an error, 2 for usage or input errors.
 
 use std::collections::BTreeMap;
 use std::io::{self, Read};

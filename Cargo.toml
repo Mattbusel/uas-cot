@@ -1,10 +1,10 @@
 [package]
 name = "uas-cot"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Matt Busel <matt@busel.dev>"]
 edition = "2021"
 rust-version = "1.70"
-description = "Drone telemetry to Cursor on Target (CoT) for TAK: Remote ID, MISB ST 0601 KLV (STANAG 4609 video), MAVLink and MAVLink-M (military.xml) tracks to ATAK/WinTAK/TAK Server, with a MAVLink-M conformance checker and the uas2cot command line bridge"
+description = "Drone telemetry to Cursor on Target (CoT) for TAK: Remote ID, MISB ST 0601 KLV (STANAG 4609 video), MAVLink vehicle telemetry and MAVLink-M (military.xml) friendly position reports to ATAK/WinTAK/TAK Server, with a MAVLink-M framing checker and the uas2cot command line bridge. Telemetry and position interoperability only"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Mattbusel/uas-cot"
 homepage = "https://github.com/Mattbusel/uas-cot"
@@ -22,8 +22,9 @@ remoteid = ["dep:remoteid"]
 misb = ["dep:misb"]
 ## The `uas2cot` binary (needs remoteid, misb and mavlink-tlog).
 cli = ["remoteid", "misb", "dep:mavlink-tlog"]
-## MAVLink-M (Dronecode `military.xml`) tracks to CoT, and the conformance
-## checker (`mavlink_m` module, `mavlinkm-check` binary with `cli`).
+## MAVLink-M (Dronecode `military.xml`) friendly position reports to CoT,
+## and the framing checker (`mavlink_m` module, `mavlinkm-check` binary
+## with `cli`). Target, track, fires and engagement messages are refused.
 mavlink-m = ["dep:roxmltree"]
 
 [dev-dependencies]

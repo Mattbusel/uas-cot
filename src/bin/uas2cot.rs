@@ -7,8 +7,8 @@
 //! uas2cot mavlink-udp <bind addr>   live MAVLink over UDP, for example 0.0.0.0:14550
 //!
 //! Built with the `mavlink-m` feature, `tlog` and `mavlink-udp` also turn
-//! MAVLink-M (military.xml) TRACK_IDENTITY, TARGET_HANDOVER,
-//! PARTICIPANT_POSITION and TARGET messages into CoT.
+//! MAVLink-M (military.xml) PARTICIPANT_POSITION friendly position reports
+//! into CoT. Target, track, fires and engagement messages are dropped.
 //!
 //! options:
 //!   --udp <addr>       send each event as a UDP datagram (239.2.3.1:6969 is the TAK SA multicast group)

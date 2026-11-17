@@ -44,7 +44,7 @@ def main():
     if len(args) < 2:
         print(__doc__)
         sys.exit(2)
-    title = "uas2cot: MAVLink + MAVLink-M to CoT"
+    title = "uas2cot: MAVLink + MAVLink-M positions to CoT"
     if "--title" in args:
         title = args[args.index("--title") + 1]
     frames = parse(args[0])

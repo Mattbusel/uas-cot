@@ -26,14 +26,27 @@
 - `tests/mavlink_m.rs` (feature `mavlink-m`):
   - `CRC_EXTRA`, base length and full length of all 35 MAVLink-M messages
     against pymavlink 2.4.50 (`tests/data/mavlink_m_reference.txt`);
-  - every CoT type the gateway can emit against the MIL-STD-2525B change 2
-    function tables (`tests/data/2525b_function_ids.txt`, from the MIT
-    tables in spatialillusions/mil-std-2525 0.2.8);
-  - handover and identity joined by track UID, PPLI and TARGET mapping, and
-    that engagement fields never reach the XML;
-  - the checker on good frames and on each kind of error;
+  - scope: every `military.xml` message is either on the blocked list or
+    on the reviewed in-scope list (`every_message_is_classified`); no
+    blocked message (zero-filled, all-ones, or a plausible payload that
+    would pass validation, with and without `reject_invalid`) produces CoT
+    (`blocked_messages_never_produce_cot`); of the in-scope messages only
+    `PARTICIPANT_POSITION` does (`only_participant_position_is_translated`);
+    the crate will not decode or encode a blocked message
+    (`blocked_messages_are_not_decoded_or_encoded`); a newer dialect's
+    renamed or new target message is caught by name
+    (`name_rule_covers_newer_dialects`); the checker checks framing,
+    checksum and length of blocked messages but never decodes or prints
+    their fields (`checker_does_not_decode_blocked_messages`);
+  - every CoT dimension the gateway can emit against the MIL-STD-2525B
+    change 2 tables (`tests/data/2525b_function_ids.txt`);
+  - PPLI mapping, the checker on good frames and on each kind of error;
   - `uas2cot tlog` and `mavlinkm-check tlog` on a log with vehicle
-    telemetry, MAVLink-M traffic and one corrupt message.
+    telemetry, a friendly position report, one frame of every blocked
+    message and one corrupt report: the output is exactly the vehicle and
+    the friendly marker.
+  - A `const` assertion in `src/mavlink_m/scope.rs` stops the build if the
+    translated list ever holds a blocked message.
 - CI runs the simulated MAVLink-M scenario end to end and validates its CoT
   against the MITRE schemas and takproto.
 - Unit tests: XML escaping, time formatting, angle normalisation, MAVLink

@@ -52,8 +52,10 @@ type `b-m-p-s-p-i`, how `m-i`, at the frame center (23, 24; height 78, else
 
 ## MAVLink-M (`mavlink_m`, feature `mavlink-m`)
 
-See [mavlink-m.md](mavlink-m.md) for the full table, the fields that are
-never translated, and the conformance checks.
+Friendly position reports (`PARTICIPANT_POSITION`) only. Target, track,
+handover, fires, munition and engagement messages are refused. See
+[mavlink-m.md](mavlink-m.md) for the scope, the table and the conformance
+checks.
 
 ## Heights
 

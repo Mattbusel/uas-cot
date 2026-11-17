@@ -1,23 +1,17 @@
-//! MAVLink-M: layout against pymavlink, CoT types against MIL-STD-2525B,
-//! the gateway end to end through `uas2cot`, and the conformance checker.
+//! MAVLink-M: layout against pymavlink, the scope block (no target, track,
+//! fires or engagement message ever produces CoT or is decoded), friendly
+//! position reports end to end through `uas2cot`, and the conformance
+//! checker.
 #![cfg(feature = "mavlink-m")]
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use uas_cot::mavlink_m::{self, validate, Gateway, Value};
+use uas_cot::mavlink_m::{self, scope, validate, FieldType, Gateway, Message, Options, Value};
 
 fn data(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data")
         .join(name)
-}
-
-const TRACK: [u8; 16] = [
-    0x5e, 0x1d, 0x0c, 0x41, 0x9a, 0x2b, 0x4c, 0x8e, 0x91, 0x3f, 0x60, 0x7d, 0x22, 0xa4, 0x18, 0xb3,
-];
-
-fn uid_value() -> Value {
-    Value::Array(TRACK.iter().map(|&b| Value::Uint(b as u64)).collect())
 }
 
 fn payload(name: &str, values: &[(&str, Value)]) -> (u32, Vec<u8>) {
@@ -44,49 +38,125 @@ fn frame(sys: u8, id: u32, p: &[u8]) -> Vec<u8> {
     buf[..n].to_vec()
 }
 
-fn handover() -> (u32, Vec<u8>) {
+fn participant(ppli_type: u64) -> (u32, Vec<u8>) {
     payload(
-        "TARGET_HANDOVER",
+        "PARTICIPANT_POSITION",
         &[
             ("time_usec", Value::Uint(1_763_400_000_000_000)),
-            ("target_system", Value::Uint(2)),
-            ("valid_until_usec", Value::Uint(1_763_400_010_000_000)),
-            ("lat", Value::Int(473_941_489)),
-            ("lon", Value::Int(85_429_382)),
-            ("alt", Value::Float(488.0)),
-            ("vx", Value::Float(4.8)),
-            ("vy", Value::Float(6.4)),
-            ("cov_pos_x", Value::Float(25.0)),
-            ("cov_pos_y", Value::Float(16.0)),
-            ("cov_pos_z", Value::Float(9.0)),
-            ("target_name", Value::Text("SIM TRUCK".into())),
-            ("confidence_score", Value::Float(0.72)),
-            ("authorization", Value::Array(vec![Value::Uint(0xAB); 8])),
-            ("target_class", Value::Uint(5)),
-            ("track_uid", uid_value()),
+            ("lat", Value::Int(473_977_418)),
+            ("lon", Value::Int(85_455_939)),
+            ("alt", Value::Float(f64::NAN)),
+            ("vx", Value::Float(0.0)),
+            ("vy", Value::Float(-12.0)),
+            ("course", Value::Float(f64::NAN)),
+            ("callsign", Value::Text("HAWK 2".into())),
+            ("origin_sysid", Value::Uint(2)),
+            ("stanag_identity", Value::Uint(3)),
+            ("ppli_type", Value::Uint(ppli_type)),
         ],
     )
 }
 
-fn identity(stanag: u64, context: u64) -> (u32, Vec<u8>) {
-    payload(
-        "TRACK_IDENTITY",
-        &[
-            ("time_usec", Value::Uint(1_763_400_000_000_000)),
-            ("track_uid", uid_value()),
-            ("id_confidence", Value::Float(0.72)),
-            ("origin_sysid", Value::Uint(1)),
-            ("id_method", Value::Uint(1)),
-            ("pid_status", Value::Uint(1)),
-            ("target_class", Value::Uint(5)),
-            ("stanag_identity", Value::Uint(stanag)),
-            ("environment", Value::Uint(5)),
-            ("atr_confidence_pct", Value::Uint(255)),
-            ("sidc_context", Value::Uint(context)),
-            ("external_track_number", Value::Text("TN 04521".into())),
-            ("external_track_type", Value::Uint(1)),
-        ],
-    )
+/// Every message the scope rules must refuse, by name: fires, munition,
+/// target, track, engagement and handover messages of `military.xml`.
+const MUST_BLOCK: &[&str] = &[
+    "TRACK_IDENTITY",
+    "TARGET_CUE",
+    "TARGET_HANDOVER",
+    "TARGET",
+    "TARGET_SET_COORD",
+    "TARGET_BOX_COORD",
+    "TARGET_AUTHORIZATION",
+    "FIRES",
+    "SPLASH_CORRECTION",
+    "BATTLE_DAMAGE_ASSESSMENT",
+    "ENGAGEMENT_DIRECTIVE",
+    "CALL_FOR_FIRE",
+    "ESAD_STATE",
+    "ESAD_ARMING",
+    "ESAD_CONFIG",
+    "STORE_STATUS",
+    "STORE_SENSOR_STATUS",
+    "STORE_MUNITION",
+    "LOITER_MUNITION_CONTROL",
+    "RWS_POSE",
+    "RWS_STATE",
+    "SENSOR_TASKING",
+    "CAS_9LINE",
+    "TERMINAL_CONTROL",
+    "MAVLINK_M_ACK",
+];
+
+/// The reviewed in-scope messages: friendly positions and the generic
+/// payload management protocol. Only PARTICIPANT_POSITION becomes CoT.
+const IN_SCOPE: &[&str] = &[
+    "PARTICIPANT_POSITION",
+    "PAYLOAD_INFO",
+    "PAYLOAD_STATE",
+    "PAYLOAD_RESOURCE",
+    "PAYLOAD_INHIBIT",
+    "PAYLOAD_MEASUREMENT",
+    "PAYLOAD_OPERATION_REQUEST",
+    "PAYLOAD_OPERATION_STATUS",
+    "PAYLOAD_CATALOGUE_STATUS",
+    "PAYLOAD_OPERATION_CANCEL",
+];
+
+fn put(p: &mut [u8], off: usize, ty: FieldType, x: f64) {
+    let b: Vec<u8> = match ty {
+        FieldType::Char | FieldType::U8 | FieldType::I8 => vec![x as i64 as u8],
+        FieldType::U16 | FieldType::I16 => (x as i64 as u16).to_le_bytes().to_vec(),
+        FieldType::U32 | FieldType::I32 => (x as i64 as u32).to_le_bytes().to_vec(),
+        FieldType::U64 | FieldType::I64 => (x as i64 as u64).to_le_bytes().to_vec(),
+        FieldType::F32 => (x as f32).to_le_bytes().to_vec(),
+        FieldType::F64 => x.to_le_bytes().to_vec(),
+    };
+    p[off..off + b.len()].copy_from_slice(&b);
+}
+
+/// A full-length payload of `m` written byte by byte (not through
+/// `Message::encode`, which refuses blocked messages) with values that
+/// would pass the field checks: defined enum values, a real position,
+/// in-range numbers, non-zero UIDs. If the block were missing, this is
+/// what a gateway would translate.
+fn plausible(m: &Message) -> Vec<u8> {
+    let d = mavlink_m::military();
+    let mut p = vec![0u8; m.max_len];
+    for f in &m.fields {
+        let n = f.array_len.unwrap_or(1);
+        for k in 0..n {
+            let off = f.offset + k * f.ty.size();
+            let x = if let Some(e) = f.enum_name.as_deref().and_then(|e| d.enums.get(e)) {
+                if e.bitmask {
+                    0.0
+                } else {
+                    e.entries
+                        .iter()
+                        .map(|y| y.value)
+                        .find(|&v| v != 0)
+                        .unwrap_or(0) as f64
+                }
+            } else if f.units.as_deref() == Some("degE7") {
+                if f.name.contains("lon") {
+                    85_455_939.0
+                } else {
+                    473_977_418.0
+                }
+            } else if f.ty == FieldType::Char {
+                if k == 0 {
+                    b'X' as f64
+                } else {
+                    0.0
+                }
+            } else if f.description.contains("[0.0-1.0]") {
+                0.5
+            } else {
+                1.0
+            };
+            put(&mut p, off, f.ty, x);
+        }
+    }
+    p
 }
 
 #[test]
@@ -116,158 +186,146 @@ fn layout_matches_pymavlink() {
     assert_eq!(n, d.messages.len());
 }
 
+/// Every message of the embedded dialect is classified: blocked, or on the
+/// reviewed in-scope list. A new message in a dialect update fails here
+/// until someone decides which side it is on.
+#[test]
+fn every_message_is_classified() {
+    let d = mavlink_m::military();
+    for name in MUST_BLOCK {
+        let m = d
+            .message_by_name(name)
+            .unwrap_or_else(|| panic!("{name} missing"));
+        assert!(m.is_blocked(), "{name} must be blocked");
+        assert!(scope::is_blocked(m.id, name), "{name} must be blocked");
+        assert!(!scope::is_translated(m.id), "{name} must not be translated");
+    }
+    for name in IN_SCOPE {
+        let m = d.message_by_name(name).unwrap();
+        assert!(!m.is_blocked(), "{name} is in scope");
+    }
+    for m in d.messages.values() {
+        assert!(
+            MUST_BLOCK.contains(&m.name.as_str()) || IN_SCOPE.contains(&m.name.as_str()),
+            "{} is not classified",
+            m.name
+        );
+        // the blocked list itself agrees with the dialect's ids
+        if let Some(&(_, n)) = scope::BLOCKED.iter().find(|(id, _)| *id == m.id) {
+            assert_eq!(n, m.name);
+        }
+    }
+    assert_eq!(scope::BLOCKED.len(), MUST_BLOCK.len());
+    assert_eq!(scope::TRANSLATED, &[(53003, "PARTICIPANT_POSITION")]);
+}
+
+/// No blocked message produces CoT: zero-filled, all-ones, and a plausible
+/// payload that would pass validation, with and without `reject_invalid`.
+#[test]
+fn blocked_messages_never_produce_cot() {
+    let d = mavlink_m::military();
+    let mut sent = 0;
+    for reject_invalid in [true, false] {
+        let mut gw = Gateway::new(Options {
+            reject_invalid,
+            ..Options::default()
+        });
+        let mut n = 0;
+        for name in MUST_BLOCK {
+            let m = d.message_by_name(name).unwrap();
+            for p in [vec![0u8; m.max_len], vec![0xFFu8; m.max_len], plausible(m)] {
+                for sys in [1u8, 7, 255] {
+                    let e = gw.ingest(sys, m.id, &p, 1_763_400_000_000_000);
+                    assert!(e.is_none(), "{name} produced CoT: {:?}", e);
+                    n += 1;
+                }
+            }
+        }
+        assert_eq!(gw.blocked(), n);
+        sent += n;
+    }
+    assert_eq!(sent, 2 * 25 * 3 * 3);
+}
+
+/// Of the in-scope messages, only PARTICIPANT_POSITION becomes CoT.
+#[test]
+fn only_participant_position_is_translated() {
+    let d = mavlink_m::military();
+    let mut gw = Gateway::new(Options {
+        reject_invalid: false,
+        ..Options::default()
+    });
+    for name in IN_SCOPE {
+        let m = d.message_by_name(name).unwrap();
+        let e = gw.ingest(1, m.id, &plausible(m), 1_763_400_000_000_000);
+        assert_eq!(e.is_some(), *name == "PARTICIPANT_POSITION", "{name}");
+    }
+    assert_eq!(gw.blocked(), 0);
+}
+
+/// Blocked messages are not decoded or built by the crate's own API.
+#[test]
+fn blocked_messages_are_not_decoded_or_encoded() {
+    let d = mavlink_m::military();
+    for name in MUST_BLOCK {
+        let m = d.message_by_name(name).unwrap();
+        let p = plausible(m);
+        assert!(m.decode(&p).is_empty(), "{name} decoded");
+        for f in &m.fields {
+            assert_eq!(m.get(&p, &f.name), None, "{name}.{} decoded", f.name);
+        }
+        let first = m.fields[0].name.as_str();
+        let err = m.encode(&[(first, Value::Uint(1))]).unwrap_err();
+        assert!(err.to_string().contains("out of scope"), "{err}");
+    }
+}
+
+/// A newer dialect cannot slip a renamed or new target message past the
+/// block: the name rule covers the whole MAVLink-M id range.
+#[test]
+fn name_rule_covers_newer_dialects() {
+    let xml = r#"<mavlink><messages>
+        <message id="53500" name="TARGET_PACKAGE_V2"><description>x</description>
+          <field type="int32_t" name="lat" units="degE7">lat</field></message>
+        <message id="53501" name="MUNITION_RELEASE"><description>x</description>
+          <field type="uint8_t" name="store">s</field></message>
+        <message id="53502" name="FRIENDLY_BEACON"><description>x</description>
+          <field type="uint8_t" name="id">i</field></message>
+        </messages></mavlink>"#;
+    let d = mavlink_m::Dialect::parse("newer", xml).unwrap();
+    for id in [53500, 53501] {
+        let m = d.message(id).unwrap();
+        assert!(m.is_blocked());
+        assert!(m.decode(&[1, 2, 3, 4]).is_empty());
+        let r = validate::check_payload(&d, id, &[1, 2, 3, 4][..m.max_len], true);
+        assert!(r.framing_only, "{r}");
+    }
+    assert!(!d.message(53502).unwrap().is_blocked());
+}
+
 #[test]
 fn every_cot_type_is_a_2525b_function() {
     let table = std::fs::read_to_string(data("2525b_function_ids.txt")).unwrap();
     let known: std::collections::HashSet<&str> =
         table.lines().filter(|l| !l.starts_with('#')).collect();
-    let as_code = |t: &str| {
-        let mut parts = t.split('-');
-        let dim = parts.next().unwrap();
-        let func: String = parts.collect();
-        format!("{dim} {func:-<6}")
-    };
-    let mut tails: Vec<&str> = Vec::new();
     for c in 0..=255u8 {
-        tails.extend(mavlink_m::class_type(c, false));
-        tails.extend(mavlink_m::class_type(c, true));
-        tails.extend(mavlink_m::domain_dimension(c));
-        tails.extend(mavlink_m::environment_dimension(c));
-        tails.extend(mavlink_m::ppli_dimension(c));
+        if let Some(t) = mavlink_m::ppli_dimension(c) {
+            let code = format!("{t} ------");
+            assert!(
+                known.contains(code.as_str()),
+                "{t} is not a 2525B dimension"
+            );
+        }
+        assert!("puafnsh".contains(mavlink_m::affiliation_from_identity(c)));
     }
-    for t in tails {
-        assert!(
-            known.contains(as_code(t).as_str()),
-            "{t} is not a 2525B function ID"
-        );
-    }
-    // every defined target class with a fixed dimension has a mapping
-    let classes = &mavlink_m::military().enums["MAVLINK_M_TARGET_CLASS"];
-    let unmapped: Vec<&str> = classes
-        .entries
-        .iter()
-        .filter(|e| mavlink_m::class_type(e.value as u8, false).is_none())
-        .map(|e| e.name.as_str())
-        .collect();
-    assert_eq!(
-        unmapped,
-        [
-            "MAVLINK_M_TARGET_CLASS_UNKNOWN",
-            "MAVLINK_M_TARGET_CLASS_EMITTER_UNKNOWN",
-            "MAVLINK_M_TARGET_CLASS_RADAR_EMITTER",
-            "MAVLINK_M_TARGET_CLASS_JAMMER",
-            "MAVLINK_M_TARGET_CLASS_COMMUNICATIONS_NODE",
-            "MAVLINK_M_TARGET_CLASS_NETWORK_NODE",
-            "MAVLINK_M_TARGET_CLASS_OTHER",
-        ]
-    );
-}
-
-#[test]
-fn handover_joins_identity_by_track_uid() {
-    let mut gw = Gateway::default();
-    let now = 1_763_400_001_000_000;
-    // kinematics first, identity unknown: affiliation from target_force (unknown)
-    let (hid, hp) = handover();
-    let e = gw.ingest(1, hid, &hp, now).unwrap();
-    assert_eq!(
-        e.uid,
-        "mavlink-m-track-5e1d0c41-9a2b-4c8e-913f-607d22a418b3"
-    );
-    assert_eq!(e.kind, "a-u-G-E-V-U");
-    assert!((e.point.lat - 47.3941489).abs() < 1e-9);
-    assert_eq!(e.point.ce, 5.0);
-    assert_eq!(e.point.le, 3.0);
-    let t = e.track.unwrap();
-    assert!((t.speed - 8.0).abs() < 1e-6 && (t.course - 53.130102).abs() < 1e-4);
-    assert_eq!(e.stale_us, 1_763_400_010_000_000);
-    assert_eq!(e.links[0].uid, "mav-1");
-    // identity arrives: the same marker is re-issued as suspect, flagged simulation
-    let (iid, ip) = identity(5, 2);
-    let e2 = gw.ingest(1, iid, &ip, now).unwrap();
-    assert_eq!(e2.uid, e.uid);
-    assert_eq!(e2.kind, "a-s-G-E-V-U");
-    assert_eq!(e2.callsign.as_deref(), Some("SIM TRUCK"));
-    let r = e2.remarks.clone().unwrap();
-    assert!(r.contains("SIMULATION track."), "{r}");
-    assert!(r.contains("Identity: suspect."), "{r}");
-    assert!(r.contains("External track TN 04521 (link16)."), "{r}");
-    // later kinematics keep the identity
-    let e3 = gw.ingest(1, hid, &hp, now + 1_000_000).unwrap();
-    assert_eq!(e3.kind, "a-s-G-E-V-U");
-    // engagement fields are not carried
-    let xml = e3.to_xml();
-    assert!(!xml.to_lowercase().contains("authoriz"), "{xml}");
-    assert!(!xml.contains("ABAB"), "{xml}");
-}
-
-#[test]
-fn target_excludes_engagement_fields() {
-    let (id, p) = payload(
-        "TARGET",
-        &[
-            ("time_usec", Value::Uint(1_763_400_000_000_000)),
-            ("target_id", Value::Uint(17)),
-            ("target_name", Value::Text("BRIDGE 3".into())),
-            ("lat", Value::Int(473_977_418)),
-            ("lon", Value::Int(85_455_939)),
-            ("alt", Value::Float(470.0)),
-            ("cep_desired", Value::Float(3.0)),
-            ("flags", Value::Uint(1 | 2 | 32)),
-            ("package_endpoint_ip_1", Value::Uint(0xC0A8010A)),
-            ("package_endpoint_port", Value::Uint(8443)),
-            ("package_path", Value::Text("pkg/secret-path".into())),
-            ("prf_code", Value::Uint(1688)),
-            ("target_class", Value::Uint(191)),
-            ("target_domain", Value::Uint(8)),
-            ("target_force", Value::Uint(10)),
-            ("confidence", Value::Uint(8_500)),
-            ("tle_category", Value::Uint(1)),
-            ("restricted_target_flags", Value::Uint(1)),
-        ],
-    );
-    let mut gw = Gateway::default();
-    let e = gw.ingest(4, id, &p, 1_763_400_000_500_000).unwrap();
-    assert_eq!(e.uid, "mavlink-m-target-4-17");
-    assert_eq!(e.kind, "a-n-G-I-T");
-    let xml = e.to_xml();
-    for banned in [
-        "1688",
-        "secret-path",
-        "8443",
-        "192.168",
-        "cep",
-        "authorization required",
-        "restricted",
-    ] {
-        assert!(
-            !xml.to_lowercase().contains(banned),
-            "{banned} leaked: {xml}"
-        );
-    }
-    let r = e.remarks.unwrap();
-    assert!(r.contains("Confidence 0.85."), "{r}");
-    assert!(r.contains("Flags: gnss degraded, moving."), "{r}");
 }
 
 #[test]
 fn participant_position_is_a_friendly_marker() {
-    let (id, p) = payload(
-        "PARTICIPANT_POSITION",
-        &[
-            ("lat", Value::Int(473_977_418)),
-            ("lon", Value::Int(85_455_939)),
-            ("alt", Value::Float(f64::NAN)),
-            ("vx", Value::Float(0.0)),
-            ("vy", Value::Float(-12.0)),
-            ("course", Value::Float(f64::NAN)),
-            ("callsign", Value::Text("HAWK 2".into())),
-            ("origin_sysid", Value::Uint(2)),
-            ("stanag_identity", Value::Uint(3)),
-            ("ppli_type", Value::Uint(1)),
-        ],
-    );
-    let e = Gateway::default().ingest(2, id, &p, 1).unwrap();
+    let (id, p) = participant(1);
+    let e = Gateway::default()
+        .ingest(2, id, &p, 1_763_400_000_000_001)
+        .unwrap();
     assert_eq!(
         (e.uid.as_str(), e.kind.as_str()),
         ("mavlink-m-ppli-2", "a-f-A")
@@ -280,12 +338,11 @@ fn participant_position_is_a_friendly_marker() {
 #[test]
 fn checker_accepts_good_frames() {
     let d = mavlink_m::military();
-    for (id, p) in [handover(), identity(6, 0)] {
-        let f = frame(1, id, &p);
-        let r = validate::check_frame(d, &f);
-        assert!(r.is_ok() && r.findings.is_empty(), "{r}");
-        assert_eq!(r.sys_id, Some(1));
-    }
+    let (id, p) = participant(1);
+    let f = frame(1, id, &p);
+    let r = validate::check_frame(d, &f);
+    assert!(r.is_ok() && r.findings.is_empty() && !r.framing_only, "{r}");
+    assert_eq!(r.sys_id, Some(1));
 }
 
 #[test]
@@ -300,13 +357,11 @@ fn checker_finds_errors() {
     };
 
     // undefined enum value
-    let (id, mut p) = identity(5, 2);
-    let off = d.message(id).unwrap().field("pid_status").unwrap().offset;
-    p[off] = 9;
+    let (id, p) = participant(9);
     let r = validate::check_payload(d, id, &p, true);
     assert_eq!(
         errors(&r),
-        ["pid_status: 9 is not a defined MAVLINK_M_PID_STATUS value"]
+        ["ppli_type: 9 is not a defined MAVLINK_M_PPLI_TYPE value"]
     );
 
     // a protected (extended-Hamming) enum reports corruption and the nearest codeword
@@ -315,61 +370,26 @@ fn checker_finds_errors() {
     let mut p2 = vec![0u8; st.max_len];
     p2[f.offset] = 14; // one bit away from PAYLOAD_HEALTH_NOMINAL (15)
     let r = validate::check_payload(d, st.id, &p2, true);
-    let e = errors(&r).join(
-        "
-",
-    );
+    let e = errors(&r).join("\n");
     assert!(
         e.contains("health: 14 is not a defined PAYLOAD_HEALTH value: this enum's values are codewords at least 4 bits apart")
             && e.contains("nearest codeword PAYLOAD_HEALTH_NOMINAL, 1 bits away"),
         "{e}"
     );
 
-    // "Never 0": a handover addressed to every system
-    let (hid, mut hp) = handover();
-    let off = d
-        .message(hid)
-        .unwrap()
-        .field("target_system")
-        .unwrap()
-        .offset;
-    hp[off] = 0;
-    let r = validate::check_payload(d, hid, &hp, true);
+    // out-of-range latitude
+    let (id, mut p) = participant(1);
+    let lat = d.message(id).unwrap().field("lat").unwrap().offset;
+    p[lat..lat + 4].copy_from_slice(&950_000_000i32.to_le_bytes());
+    let r = validate::check_payload(d, id, &p, true);
     assert_eq!(
         errors(&r),
-        ["target_system: is 0; the definition says it is never 0"]
-    );
-
-    // out-of-range latitude and confidence
-    let (hid, mut hp) = handover();
-    let m = d.message(hid).unwrap();
-    let lat = m.field("lat").unwrap().offset;
-    hp[lat..lat + 4].copy_from_slice(&950_000_000i32.to_le_bytes());
-    let c = m.field("confidence_score").unwrap().offset;
-    hp[c..c + 4].copy_from_slice(&1.5f32.to_le_bytes());
-    let r = validate::check_payload(d, hid, &hp, true);
-    assert_eq!(
-        errors(&r),
-        [
-            "lat: 950000000 degE7 is out of range (|value| <= 900000000)",
-            "confidence_score: 1.5 is outside [0.0-1.0]"
-        ]
-    );
-
-    // undefined bitmask bits
-    let tgt = d.message_by_name("TARGET").unwrap();
-    let mut tp = vec![0u8; tgt.max_len];
-    let fo = tgt.field("flags").unwrap().offset;
-    tp[fo..fo + 4].copy_from_slice(&0x1000u32.to_le_bytes());
-    let r = validate::check_payload(d, tgt.id, &tp, true);
-    assert_eq!(
-        errors(&r),
-        ["flags: bits 0x1000 are not defined in bitmask MAVLINK_M_TARGET_FLAGS"]
+        ["lat: 950000000 degE7 is out of range (|value| <= 900000000)"]
     );
 
     // wrong checksum: a sender built from another definition
-    let (hid, hp) = handover();
-    let mut f = frame(1, hid, &hp);
+    let (id, p) = participant(1);
+    let mut f = frame(1, id, &p);
     let n = f.len();
     f[n - 1] ^= 0xFF;
     let r = validate::check_frame(d, &f);
@@ -377,8 +397,43 @@ fn checker_finds_errors() {
 
     // unknown id, too long, MAVLink 1
     assert!(!validate::check_payload(d, 53_999, &[1], true).is_ok());
-    assert!(!validate::check_payload(d, hid, &vec![1u8; 300], true).is_ok());
-    assert!(!validate::check_payload(d, hid, &hp, false).is_ok());
+    assert!(!validate::check_payload(d, id, &vec![1u8; 300], true).is_ok());
+    assert!(!validate::check_payload(d, id, &p, false).is_ok());
+}
+
+/// The checker still checks framing, checksum and length of blocked
+/// messages, but never decodes, range-checks or prints their fields.
+#[test]
+fn checker_does_not_decode_blocked_messages() {
+    let d = mavlink_m::military();
+    for name in MUST_BLOCK {
+        let m = d.message_by_name(name).unwrap();
+        // garbage fields: undefined enums, out-of-range positions
+        let mut p = vec![0xEEu8; m.max_len];
+        let r = validate::check_payload(d, m.id, &p, true);
+        assert!(r.framing_only, "{r}");
+        assert!(r.findings.iter().all(|f| f.field.is_none()), "{r}");
+        assert!(r.is_ok(), "{r}");
+        let text = r.to_string();
+        for f in &m.fields {
+            assert!(
+                !text.contains(&format!("[{}]", f.name)),
+                "{name}.{} printed: {text}",
+                f.name
+            );
+        }
+        // framing is still checked
+        let mut fr = frame(1, m.id, &p);
+        let n = fr.len();
+        fr[n - 1] ^= 0xFF;
+        assert!(!validate::check_frame(d, &fr).is_ok(), "{name} checksum");
+        p.push(1);
+        assert!(
+            !validate::check_payload(d, m.id, &p, true).is_ok(),
+            "{name} length"
+        );
+        assert!(!validate::check_payload(d, m.id, &p[..m.max_len.min(3)], false).is_ok());
+    }
 }
 
 #[test]
@@ -398,7 +453,7 @@ fn from_file_resolves_includes() {
         "{:?}",
         d.unresolved_includes
     );
-    assert!(d.message(0).is_some() && d.message(53002).is_some());
+    assert!(d.message(0).is_some() && d.message(53003).is_some());
     let cmds = &d.enums["MAV_CMD"].entries;
     assert_eq!(cmds[0].name, "MAV_CMD_NAV_WAYPOINT");
     assert!(cmds.iter().any(|e| e.value == 53091));
@@ -406,10 +461,12 @@ fn from_file_resolves_includes() {
     std::fs::remove_dir_all(dir).ok();
 }
 
-/// Builds a .tlog with vehicle telemetry and MAVLink-M traffic, runs
-/// `uas2cot tlog` and `mavlinkm-check tlog` on it.
+/// Builds a .tlog with vehicle telemetry, a friendly position report, one
+/// plausible frame of every blocked message and one corrupt position
+/// report, then runs `uas2cot tlog` and `mavlinkm-check tlog` on it.
 #[test]
 fn uas2cot_and_checker_on_a_tlog() {
+    let d = mavlink_m::military();
     let path = std::env::temp_dir().join(format!("uas-cot-mlm-{}.tlog", std::process::id()));
     {
         let mut w = mavlink_tlog::TlogWriter::new(std::fs::File::create(&path).unwrap());
@@ -455,20 +512,16 @@ fn uas2cot_and_checker_on_a_tlog() {
         )
         .unwrap();
         w.write_frame(t0, &buf[..n]).unwrap();
-        let (hid, hp) = handover();
-        w.write_frame(t0 + 100_000, &frame(1, hid, &hp)).unwrap();
-        let (iid, ip) = identity(6, 0);
-        w.write_frame(t0 + 200_000, &frame(1, iid, &ip)).unwrap();
-        // a corrupt one: undefined pid_status
-        let mut bad = ip.clone();
-        let off = mavlink_m::military()
-            .message(iid)
-            .unwrap()
-            .field("pid_status")
-            .unwrap()
-            .offset;
-        bad[off] = 9;
-        w.write_frame(t0 + 300_000, &frame(1, iid, &bad)).unwrap();
+        let (pid, pp) = participant(1);
+        w.write_frame(t0 + 100_000, &frame(1, pid, &pp)).unwrap();
+        for (k, name) in MUST_BLOCK.iter().enumerate() {
+            let m = d.message_by_name(name).unwrap();
+            w.write_frame(t0 + 200_000 + k as u64, &frame(1, m.id, &plausible(m)))
+                .unwrap();
+        }
+        // a corrupt one: undefined ppli_type
+        let (pid, bad) = participant(9);
+        w.write_frame(t0 + 300_000, &frame(1, pid, &bad)).unwrap();
         w.flush().unwrap();
     }
     let p = path.to_str().unwrap();
@@ -485,36 +538,57 @@ fn uas2cot_and_checker_on_a_tlog() {
     let lines: Vec<&str> = cot.lines().collect();
     assert_eq!(
         lines.len(),
-        3,
-        "the corrupt TRACK_IDENTITY is dropped: {cot}"
+        2,
+        "only the vehicle and the friendly position report: {cot}"
     );
     assert!(
         lines[0].contains("uid=\"mav-1\" type=\"a-f-A-M-F-Q\""),
         "{}",
         lines[0]
     );
-    assert!(lines[1].contains("type=\"a-u-G-E-V-U\""), "{}", lines[1]);
-    assert!(lines[2].contains("type=\"a-h-G-E-V-U\""), "{}", lines[2]);
     assert!(
-        lines[2].contains("<link uid=\"mav-1\" type=\"a-f-A\" relation=\"p-p\"/>"),
+        lines[1].contains("uid=\"mavlink-m-ppli-2\" type=\"a-f-A\""),
         "{}",
-        lines[2]
+        lines[1]
     );
+    for word in ["target", "track-", "handover", "fire", "munition", "esad"] {
+        assert!(
+            !cot.to_lowercase().contains(word),
+            "{word} in output: {cot}"
+        );
+    }
 
     let out = Command::new(env!("CARGO_BIN_EXE_mavlinkm-check"))
-        .args(["tlog", p])
+        .args(["tlog", p, "--all"])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
     let report = String::from_utf8(out.stdout).unwrap();
-    assert!(report.contains("TRACK_IDENTITY (53000) from 1/1\n  error [pid_status]: 9 is not a defined MAVLINK_M_PID_STATUS value"), "{report}");
+    assert!(
+        report.contains("PARTICIPANT_POSITION (53003) from 1/1\n  error [ppli_type]: 9 is not a defined MAVLINK_M_PPLI_TYPE value"),
+        "{report}"
+    );
+    for name in MUST_BLOCK {
+        let m = d.message_by_name(name).unwrap();
+        assert!(
+            report.contains(&format!(
+                "{name} ({}) from 1/1 [out of scope: framing, length and checksum only]: ok",
+                m.id
+            )),
+            "{name}: {report}"
+        );
+    }
+    // no field of a blocked message is ever named in the report
+    for line in report.lines().filter(|l| l.starts_with("  ")) {
+        assert!(line.contains("[ppli_type]"), "unexpected finding: {line}");
+    }
     let summary = String::from_utf8(out.stderr).unwrap();
     assert!(
-        summary.contains("3 MAVLink-M messages checked against military"),
+        summary.contains("27 MAVLink-M messages checked against military"),
         "{summary}"
     );
     assert!(
-        summary.contains("TRACK_IDENTITY: 2 checked, 1 with errors"),
+        summary.contains("PARTICIPANT_POSITION: 2 checked, 1 with errors"),
         "{summary}"
     );
     std::fs::remove_file(path).ok();

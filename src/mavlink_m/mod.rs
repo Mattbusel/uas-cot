@@ -1,23 +1,22 @@
-//! MAVLink-M (the Dronecode military MAVLink dialect, `military.xml`) to
-//! CoT, and a conformance checker for MAVLink-M traffic.
+//! MAVLink-M (the Dronecode military MAVLink dialect, `military.xml`)
+//! friendly position reports to CoT, and a conformance checker for
+//! MAVLink-M framing.
 //!
-//! MAVLink-M carries shared tracks between platforms: a persistent track
-//! identity (`TRACK_IDENTITY`), custody transfer of a tracked object
-//! between systems (`TARGET_HANDOVER`), friendly self-reports
-//! (`PARTICIPANT_POSITION`, PPLI-style) and individual object reports
-//! (`TARGET`). [`Gateway`] turns those into CoT events, so ATAK, WinTAK and
-//! TAK Server show what a MAVLink-M platform sees, next to the vehicles
-//! that [`crate::mavlink`] already maps.
+//! Scope: interoperability and telemetry only. [`Gateway`] turns
+//! `PARTICIPANT_POSITION` (friendly self-reports, PPLI-style) into CoT
+//! markers, so ATAK, WinTAK and TAK Server show friendly positions next to
+//! the vehicles that [`crate::mavlink`] maps from `HEARTBEAT` and
+//! `GLOBAL_POSITION_INT`. Nothing in the targeting chain is handled: every
+//! target, track, handover, fires, munition, arming, weapon and engagement
+//! message is refused at compile time (the translated list cannot contain
+//! one) and at run time (the gateway drops them, and [`Message`] will not
+//! decode or encode them). See [`scope`].
 //!
-//! This is interoperability and telemetry only: field translation of the
-//! public dialect onto a map picture. Engagement fields (authorization
-//! tokens, laser codes, target packages, CEP, DMPI, restricted-target
-//! flags) are never read into an event.
-//!
-//! [`validate`] checks frames and payloads against the dialect definition:
-//! ids, lengths, `CRC_EXTRA` checksums, enum values (including the
-//! extended-Hamming protected enums), bitmasks and the ranges the
-//! definition states.
+//! [`validate`] checks frames against the dialect definition: ids,
+//! lengths and `CRC_EXTRA` checksums for every message, plus enum values
+//! (including the extended-Hamming protected enums), bitmasks and stated
+//! ranges for the in-scope messages only. Out-of-scope messages are never
+//! decoded.
 //!
 //! The dialect is the embedded copy of `military.xml` from
 //! [Dronecode/mavlink-military](https://github.com/Dronecode/mavlink-military)
@@ -47,28 +46,19 @@
 
 mod cot;
 mod dialect;
+pub mod scope;
 pub mod validate;
 
-pub use cot::{
-    affiliation_from_force, affiliation_from_identity, class_type, domain_dimension,
-    environment_dimension, ppli_dimension, uuid_string, Gateway, Identity, Options,
-};
+pub use cot::{affiliation_from_identity, ppli_dimension, Gateway, Options};
 pub use dialect::{
     crc_accumulate, layout, Dialect, Entry, Enum, Error, Field, FieldType, Message, Value,
 };
 
 use std::sync::OnceLock;
 
-/// `TRACK_IDENTITY` message id.
-pub const TRACK_IDENTITY: u32 = 53000;
-/// `TARGET_CUE` message id.
-pub const TARGET_CUE: u32 = 53001;
-/// `TARGET_HANDOVER` message id.
-pub const TARGET_HANDOVER: u32 = 53002;
-/// `PARTICIPANT_POSITION` message id.
+/// `PARTICIPANT_POSITION` message id, the one MAVLink-M message the
+/// gateway translates.
 pub const PARTICIPANT_POSITION: u32 = 53003;
-/// `TARGET` message id.
-pub const TARGET: u32 = 53010;
 
 /// The embedded `military.xml` (Dronecode/mavlink-military commit
 /// `6375c3447c08`, 2026-10-28).

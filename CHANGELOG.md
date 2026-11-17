@@ -1,6 +1,38 @@
 # Changelog
 
-## 0.2.0 (2026-11-17)
+## 0.2.1 (2026-11-17)
+
+Scope correction. uas-cot is telemetry and position interoperability only;
+0.2.0 translated MAVLink-M targeting messages and is yanked.
+
+- The gateway no longer translates `TRACK_IDENTITY`, `TARGET_HANDOVER` or
+  `TARGET`. It translates `PARTICIPANT_POSITION` (friendly positions) only;
+  vehicle telemetry (`HEARTBEAT`, `GLOBAL_POSITION_INT`) is unchanged.
+- New `mavlink_m::scope`: every target, track, handover, fires, munition,
+  arming, weapon station, CAS, terminal control and engagement message of
+  `military.xml` (25 messages, including `CALL_FOR_FIRE`, `FIRES`,
+  `ESAD_ARMING`, `LOITER_MUNITION_CONTROL`, `TARGET*`, `TRACK*`) is
+  blocked, plus a name rule over the MAVLink-M id range for newer
+  dialects.
+  - Compile time: a `const` assertion fails the build if the translated
+    list holds a blocked message.
+  - Run time: `Gateway::ingest` drops blocked messages before reading them
+    and counts them (`Gateway::blocked`); `Message::get`, `decode` and
+    `encode` refuse them.
+- `validate` and `mavlinkm-check`: blocked messages get the frame checks
+  only (id, length, checksum) and are reported as
+  `[out of scope: framing, length and checksum only]`; their fields are
+  never decoded, range-checked or printed (`Report::framing_only`).
+- Removed: `Identity`, `uuid_string`, `class_type`, `affiliation_from_force`,
+  `domain_dimension`, `environment_dimension`, `Options::platform_uid_prefix`
+  and the `TRACK_IDENTITY`, `TARGET_CUE`, `TARGET_HANDOVER` and `TARGET`
+  id constants.
+- The simulated demo (`examples/mavlink_m_sim.rs`) now sends vehicle
+  telemetry and friendly position reports only; the GIF is redrawn.
+- Tests that fail if any blocked message produces CoT, is decoded, or has
+  a field printed by the checker.
+
+## 0.2.0 (2026-11-17, yanked: out of scope, see 0.2.1)
 
 - New feature `mavlink-m`: the `mavlink_m` module and the `mavlinkm-check`
   binary, built on the embedded MAVLink-M dialect (`military.xml` from

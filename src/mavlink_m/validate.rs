@@ -17,6 +17,11 @@
 //! | fields described "Never 0" are not 0 | field `<description>` |
 //! | `char[N]` text is valid UTF-8 | field types |
 //! | a track UID is not all zero, unless the description allows it | field `<description>` |
+//!
+//! Out-of-scope messages (target, track, handover, fires, munition, arming,
+//! weapon, engagement, see [`super::scope`]) get the frame checks only: id,
+//! length and checksum. Their fields are never decoded, range-checked or
+//! printed; the report marks them [`Report::framing_only`].
 
 use super::dialect::{crc_accumulate, Dialect, Field, FieldType, Message, Value};
 use std::fmt;
@@ -54,6 +59,9 @@ pub struct Report {
     pub comp_id: Option<u8>,
     /// Findings, in check order.
     pub findings: Vec<Finding>,
+    /// True for an out-of-scope message ([`super::scope::is_blocked`]):
+    /// only id, length and checksum were checked; no field was decoded.
+    pub framing_only: bool,
 }
 
 impl Report {
@@ -77,6 +85,9 @@ impl fmt::Display for Report {
         write!(f, "{} ({})", name, self.msg_id)?;
         if let (Some(s), Some(c)) = (self.sys_id, self.comp_id) {
             write!(f, " from {s}/{c}")?;
+        }
+        if self.framing_only {
+            write!(f, " [out of scope: framing, length and checksum only]")?;
         }
         if self.findings.is_empty() {
             return write!(f, ": ok");
@@ -123,6 +134,7 @@ pub fn check_frame(d: &Dialect, frame: &[u8]) -> Report {
         sys_id: None,
         comp_id: None,
         findings: Vec::new(),
+        framing_only: false,
     };
     let Some(&magic) = frame.first() else {
         r.push(Severity::Error, None, "empty frame".into());
@@ -161,6 +173,7 @@ pub fn check_frame(d: &Dialect, frame: &[u8]) -> Report {
     let found = u16::from_le_bytes([frame[hdr + len], frame[hdr + len + 1]]);
     let inner = check_payload(d, r.msg_id, payload, v2);
     r.name = inner.name.clone();
+    r.framing_only = inner.framing_only;
     if let Some(m) = d.message(r.msg_id) {
         let mut crc = 0xFFFF;
         for &b in &frame[1..hdr + len] {
@@ -198,6 +211,7 @@ pub fn check_payload(d: &Dialect, msg_id: u32, payload: &[u8], v2: bool) -> Repo
         sys_id: None,
         comp_id: None,
         findings: Vec::new(),
+        framing_only: false,
     };
     let Some(m) = d.message(msg_id) else {
         r.push(
@@ -209,6 +223,11 @@ pub fn check_payload(d: &Dialect, msg_id: u32, payload: &[u8], v2: bool) -> Repo
     };
     r.name = Some(m.name.clone());
     check_length(m, payload, v2, &mut r);
+    if m.is_blocked() {
+        // out of scope: no field is decoded, checked or reported
+        r.framing_only = true;
+        return r;
+    }
     for f in &m.fields {
         let v = super::dialect::decode_field(f, payload);
         check_field(d, f, &v, &mut r);
