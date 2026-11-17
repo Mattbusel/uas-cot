@@ -87,7 +87,7 @@ fn track_from_ned(vn: f64, ve: f64) -> Option<Track> {
 /// `GLOBAL_POSITION_INT`) is [`crate::mavlink`]'s job.
 ///
 /// Blocked: every target, track, handover, fires, munition, arming,
-/// weapon and engagement message ([`scope::is_blocked`]) is dropped before
+/// weapon, engagement and payload message ([`scope::is_blocked`]) is dropped before
 /// its payload is read, never produces an event, and is counted in
 /// [`Gateway::blocked`]. Every other MAVLink-M message is ignored.
 #[derive(Debug)]

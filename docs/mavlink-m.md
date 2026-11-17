@@ -16,8 +16,7 @@ engagement chain.
 | | Messages | What uas-cot does |
 |---|---|---|
 | Translated to CoT | `PARTICIPANT_POSITION` (53003); vehicle `HEARTBEAT` and `GLOBAL_POSITION_INT` (common MAVLink) | markers on the map |
-| Checked, not translated | `PAYLOAD_*` (53100 to 53108, the generic payload protocol) | frame and field checks in `mavlinkm-check` |
-| Blocked | `TRACK_IDENTITY`, `TARGET_CUE`, `TARGET_HANDOVER`, `TARGET`, `TARGET_SET_COORD`, `TARGET_BOX_COORD`, `TARGET_AUTHORIZATION`, `FIRES`, `SPLASH_CORRECTION`, `BATTLE_DAMAGE_ASSESSMENT`, `ENGAGEMENT_DIRECTIVE`, `CALL_FOR_FIRE`, `ESAD_STATE`, `ESAD_ARMING`, `ESAD_CONFIG`, `STORE_STATUS`, `STORE_SENSOR_STATUS`, `STORE_MUNITION`, `LOITER_MUNITION_CONTROL`, `RWS_POSE`, `RWS_STATE`, `SENSOR_TASKING`, `CAS_9LINE`, `TERMINAL_CONTROL`, `MAVLINK_M_ACK` | never translated, never decoded; the checker sees framing, length and checksum only |
+| Blocked | `TRACK_IDENTITY`, `TARGET_CUE`, `TARGET_HANDOVER`, `TARGET`, `TARGET_SET_COORD`, `TARGET_BOX_COORD`, `TARGET_AUTHORIZATION`, `FIRES`, `SPLASH_CORRECTION`, `BATTLE_DAMAGE_ASSESSMENT`, `ENGAGEMENT_DIRECTIVE`, `CALL_FOR_FIRE`, `ESAD_STATE`, `ESAD_ARMING`, `ESAD_CONFIG`, `STORE_STATUS`, `STORE_SENSOR_STATUS`, `STORE_MUNITION`, `LOITER_MUNITION_CONTROL`, `RWS_POSE`, `RWS_STATE`, `SENSOR_TASKING`, `CAS_9LINE`, `TERMINAL_CONTROL`, `MAVLINK_M_ACK`; the generic payload messages `PAYLOAD_INFO`, `PAYLOAD_STATE`, `PAYLOAD_RESOURCE`, `PAYLOAD_INHIBIT`, `PAYLOAD_MEASUREMENT`, `PAYLOAD_OPERATION_REQUEST`, `PAYLOAD_OPERATION_STATUS`, `PAYLOAD_CATALOGUE_STATUS`, `PAYLOAD_OPERATION_CANCEL` (53100 to 53108), which can report payload arming and activation state | never translated, never decoded; the checker sees framing, length and checksum only |
 
 How the block is enforced (`src/mavlink_m/scope.rs`):
 
@@ -28,10 +27,10 @@ How the block is enforced (`src/mavlink_m/scope.rs`):
   reads the payload, returns no event, and counts it (`Gateway::blocked`).
   `Message::get`, `Message::decode` and `Message::encode` refuse blocked
   messages, so the crate never decodes or builds their fields.
-- **Newer dialects.** Besides the list of 25, any message in the MAVLink-M
+- **Newer dialects.** Besides the list of 34, any message in the MAVLink-M
   id range (53000 to 53999) whose name contains `TARGET`, `TRACK`, `FIRE`,
-  `MUNITION`, `ENGAGE`, `HANDOVER`, `ESAD`, `ARMING`, `WEAPON`, `STRIKE`
-  and the other words in `scope::BLOCKED_WORDS` is blocked, so a
+  `MUNITION`, `ENGAGE`, `HANDOVER`, `ESAD`, `ARMING`, `WEAPON`, `STRIKE`,
+  `PAYLOAD_` and the other words in `scope::BLOCKED_WORDS` is blocked, so a
   `military.xml` loaded with `--dialect` cannot slip a new or renamed one
   past the list.
 - **Tests.** `tests/mavlink_m.rs` fails if any blocked message produces
@@ -132,7 +131,7 @@ All MAVLink-M messages, blocked ones included:
 | length: MAVLink 1 exact; MAVLink 2 not longer than the message, trailing zero bytes trimmed (warning if not) | field types, `<extensions/>` |
 | checksum with the message's `CRC_EXTRA` (a mismatch means the sender built from a different definition, or corruption) | field names, types, order |
 
-In-scope messages only (`PARTICIPANT_POSITION`, `PAYLOAD_*`):
+In-scope messages only (in the embedded dialect, `PARTICIPANT_POSITION`):
 
 | Check | From the XML |
 |---|---|

@@ -134,7 +134,7 @@ impl Message {
     }
 
     /// True if this message is out of scope (target, track, handover,
-    /// fires, munition, arming, weapon or engagement, see
+    /// fires, munition, arming, weapon, engagement or payload, see
     /// [`super::scope`]). Its fields are never decoded or encoded.
     pub fn is_blocked(&self) -> bool {
         super::scope::is_blocked(self.id, &self.name)

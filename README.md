@@ -9,7 +9,7 @@ Put drones on the TAK map. Remote ID, MISB KLV video metadata, MAVLink and MAVLi
 - Remote ID (Wi-Fi Beacon, NAN, Bluetooth via [`remoteid`](https://crates.io/crates/remoteid)): aircraft and operator markers
 - MISB ST 0601 KLV from STANAG 4609 video (via [`misb`](https://crates.io/crates/misb)): platform, camera field of view, sensor point of interest
 - MAVLink `GLOBAL_POSITION_INT`: vehicle markers, from a `.tlog` or live UDP
-- MAVLink-M (Dronecode `military.xml`, feature `mavlink-m`): friendly position reports (`PARTICIPANT_POSITION`) as CoT markers, plus `mavlinkm-check`, a framing and checksum checker for MAVLink-M traffic. Telemetry and position interoperability only: every target, track, handover, fires, munition and engagement message is refused at compile time and at run time. See [docs/mavlink-m.md](docs/mavlink-m.md)
+- MAVLink-M (Dronecode `military.xml`, feature `mavlink-m`): friendly position reports (`PARTICIPANT_POSITION`) as CoT markers, plus `mavlinkm-check`, a framing and checksum checker for MAVLink-M traffic. Telemetry and position interoperability only: every target, track, handover, fires, munition and engagement message, and every generic payload (`PAYLOAD_*`) message, is refused at compile time and at run time. See [docs/mavlink-m.md](docs/mavlink-m.md)
 - Sends to the SA multicast group (239.2.3.1:6969), a TAK Server TCP input, or stdout
 - Output passes the MITRE CoT schemas and converts cleanly to TAK Protocol v1
 

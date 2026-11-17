@@ -58,7 +58,9 @@ fn participant(ppli_type: u64) -> (u32, Vec<u8>) {
 }
 
 /// Every message the scope rules must refuse, by name: fires, munition,
-/// target, track, engagement and handover messages of `military.xml`.
+/// target, track, engagement and handover messages of `military.xml`, and
+/// the generic payload messages, which can report payload arming and
+/// activation state.
 const MUST_BLOCK: &[&str] = &[
     "TRACK_IDENTITY",
     "TARGET_CUE",
@@ -85,12 +87,6 @@ const MUST_BLOCK: &[&str] = &[
     "CAS_9LINE",
     "TERMINAL_CONTROL",
     "MAVLINK_M_ACK",
-];
-
-/// The reviewed in-scope messages: friendly positions and the generic
-/// payload management protocol. Only PARTICIPANT_POSITION becomes CoT.
-const IN_SCOPE: &[&str] = &[
-    "PARTICIPANT_POSITION",
     "PAYLOAD_INFO",
     "PAYLOAD_STATE",
     "PAYLOAD_RESOURCE",
@@ -101,6 +97,10 @@ const IN_SCOPE: &[&str] = &[
     "PAYLOAD_CATALOGUE_STATUS",
     "PAYLOAD_OPERATION_CANCEL",
 ];
+
+/// The reviewed in-scope messages: friendly positions only. Only
+/// PARTICIPANT_POSITION becomes CoT.
+const IN_SCOPE: &[&str] = &["PARTICIPANT_POSITION"];
 
 fn put(p: &mut [u8], off: usize, ty: FieldType, x: f64) {
     let b: Vec<u8> = match ty {
@@ -216,6 +216,11 @@ fn every_message_is_classified() {
         }
     }
     assert_eq!(scope::BLOCKED.len(), MUST_BLOCK.len());
+    assert_eq!(MUST_BLOCK.len() + IN_SCOPE.len(), d.messages.len());
+    for name in MUST_BLOCK.iter().filter(|n| n.starts_with("PAYLOAD_")) {
+        let m = d.message_by_name(name).unwrap();
+        assert!(scope::is_blocked_id(m.id), "{name} must be on BLOCKED");
+    }
     assert_eq!(scope::TRANSLATED, &[(53003, "PARTICIPANT_POSITION")]);
 }
 
@@ -244,7 +249,7 @@ fn blocked_messages_never_produce_cot() {
         assert_eq!(gw.blocked(), n);
         sent += n;
     }
-    assert_eq!(sent, 2 * 25 * 3 * 3);
+    assert_eq!(sent, 2 * 34 * 3 * 3);
 }
 
 /// Of the in-scope messages, only PARTICIPANT_POSITION becomes CoT.
@@ -364,16 +369,23 @@ fn checker_finds_errors() {
         ["ppli_type: 9 is not a defined MAVLINK_M_PPLI_TYPE value"]
     );
 
-    // a protected (extended-Hamming) enum reports corruption and the nearest codeword
-    let st = d.message_by_name("PAYLOAD_STATE").unwrap();
-    let f = st.field("health").unwrap();
-    let mut p2 = vec![0u8; st.max_len];
-    p2[f.offset] = 14; // one bit away from PAYLOAD_HEALTH_NOMINAL (15)
-    let r = validate::check_payload(d, st.id, &p2, true);
+    // a protected (extended-Hamming) enum reports corruption and the nearest
+    // codeword; the embedded dialect has none on an in-scope message, so
+    // this uses a small dialect of its own
+    let xml = r#"<mavlink><enums><enum name="BEACON_HEALTH">
+          <entry value="0" name="BEACON_HEALTH_UNKNOWN"/>
+          <entry value="15" name="BEACON_HEALTH_NOMINAL"/>
+          <entry value="51" name="BEACON_HEALTH_DEGRADED"/>
+          <entry value="60" name="BEACON_HEALTH_FAULT"/></enum></enums>
+        <messages><message id="53502" name="FRIENDLY_BEACON"><description>x</description>
+          <field type="uint8_t" name="health" enum="BEACON_HEALTH">h</field></message>
+        </messages></mavlink>"#;
+    let hd = mavlink_m::Dialect::parse("hamming", xml).unwrap();
+    let r = validate::check_payload(&hd, 53502, &[14], true); // one bit from NOMINAL (15)
     let e = errors(&r).join("\n");
     assert!(
-        e.contains("health: 14 is not a defined PAYLOAD_HEALTH value: this enum's values are codewords at least 4 bits apart")
-            && e.contains("nearest codeword PAYLOAD_HEALTH_NOMINAL, 1 bits away"),
+        e.contains("health: 14 is not a defined BEACON_HEALTH value: this enum's values are codewords at least 4 bits apart")
+            && e.contains("nearest codeword BEACON_HEALTH_NOMINAL, 1 bits away"),
         "{e}"
     );
 
@@ -584,7 +596,7 @@ fn uas2cot_and_checker_on_a_tlog() {
     }
     let summary = String::from_utf8(out.stderr).unwrap();
     assert!(
-        summary.contains("27 MAVLink-M messages checked against military"),
+        summary.contains("36 MAVLink-M messages checked against military"),
         "{summary}"
     );
     assert!(

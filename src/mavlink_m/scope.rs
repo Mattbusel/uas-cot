@@ -4,7 +4,9 @@
 //! vehicle state on a TAK map. It does not relay anything in the targeting
 //! or engagement chain: target, track, handover, fires, munition, arming,
 //! weapon station, close air support, terminal control or engagement
-//! messages, and the acknowledgments that close those loops.
+//! messages, the acknowledgments that close those loops, and the generic
+//! payload messages (`PAYLOAD_*`), which can report and request payload
+//! arming and activation state.
 //!
 //! The block works at three levels:
 //!
@@ -22,12 +24,13 @@
 //!
 //! [`is_blocked`] also applies a name rule to the MAVLink-M id range
 //! (53000 to 53999), so a newer `military.xml` loaded with
-//! [`super::Dialect::from_file`] cannot slip a renamed or new target or
-//! fires message past the list.
+//! [`super::Dialect::from_file`] cannot slip a renamed or new target,
+//! fires or payload message past the list.
 
 /// MAVLink-M messages that are out of scope: target, track, handover,
-/// fires, munition, arming, weapon, engagement and their acknowledgment.
-/// Ids and names from `military.xml`.
+/// fires, munition, arming, weapon, engagement and their acknowledgment,
+/// and the generic payload messages, which can report payload arming and
+/// activation state. Ids and names from `military.xml`.
 pub const BLOCKED: &[(u32, &str)] = &[
     (53000, "TRACK_IDENTITY"),
     (53001, "TARGET_CUE"),
@@ -54,6 +57,15 @@ pub const BLOCKED: &[(u32, &str)] = &[
     (53050, "SENSOR_TASKING"),
     (53060, "CAS_9LINE"),
     (53061, "TERMINAL_CONTROL"),
+    (53100, "PAYLOAD_INFO"),
+    (53101, "PAYLOAD_STATE"),
+    (53102, "PAYLOAD_RESOURCE"),
+    (53103, "PAYLOAD_INHIBIT"),
+    (53104, "PAYLOAD_MEASUREMENT"),
+    (53105, "PAYLOAD_OPERATION_REQUEST"),
+    (53106, "PAYLOAD_OPERATION_STATUS"),
+    (53107, "PAYLOAD_CATALOGUE_STATUS"),
+    (53108, "PAYLOAD_OPERATION_CANCEL"),
 ];
 
 /// Words that mark a MAVLink-M message (id 53000 to 53999) as out of scope
@@ -78,6 +90,7 @@ pub const BLOCKED_WORDS: &[&str] = &[
     "STORE_",
     "TASKING",
     "MAVLINK_M_ACK",
+    "PAYLOAD_",
 ];
 
 /// Every MAVLink-M message the gateway translates to CoT: friendly
@@ -177,7 +190,9 @@ mod tests {
         assert!(is_blocked_name("LOITER_MUNITION_CONTROL"));
         assert!(is_blocked_name("ESAD_ARMING"));
         assert!(!is_blocked_name("PARTICIPANT_POSITION"));
-        assert!(!is_blocked_name("PAYLOAD_STATE"));
+        assert!(is_blocked_name("PAYLOAD_STATE"));
+        assert!(is_blocked_name("PAYLOAD_OPERATION_REQUEST"));
+        assert!(is_blocked(53_600, "PAYLOAD_RELEASE"));
         // the name rule only applies inside the MAVLink-M range: common.xml
         // position setpoints such as POSITION_TARGET_GLOBAL_INT are not
         // MAVLink-M messages

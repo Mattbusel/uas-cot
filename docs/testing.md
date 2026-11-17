@@ -27,7 +27,8 @@
   - `CRC_EXTRA`, base length and full length of all 35 MAVLink-M messages
     against pymavlink 2.4.50 (`tests/data/mavlink_m_reference.txt`);
   - scope: every `military.xml` message is either on the blocked list or
-    on the reviewed in-scope list (`every_message_is_classified`); no
+    on the reviewed in-scope list, and all nine `PAYLOAD_*` messages are
+    on the blocked list (`every_message_is_classified`); no
     blocked message (zero-filled, all-ones, or a plausible payload that
     would pass validation, with and without `reject_invalid`) produces CoT
     (`blocked_messages_never_produce_cot`); of the in-scope messages only

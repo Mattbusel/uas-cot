@@ -1,6 +1,6 @@
 [package]
 name = "uas-cot"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Matt Busel <matt@busel.dev>"]
 edition = "2021"
 rust-version = "1.70"
@@ -24,7 +24,8 @@ misb = ["dep:misb"]
 cli = ["remoteid", "misb", "dep:mavlink-tlog"]
 ## MAVLink-M (Dronecode `military.xml`) friendly position reports to CoT,
 ## and the framing checker (`mavlink_m` module, `mavlinkm-check` binary
-## with `cli`). Target, track, fires and engagement messages are refused.
+## with `cli`). Target, track, fires, engagement and payload messages are
+## refused.
 mavlink-m = ["dep:roxmltree"]
 
 [dev-dependencies]

@@ -19,7 +19,7 @@
 //! | a track UID is not all zero, unless the description allows it | field `<description>` |
 //!
 //! Out-of-scope messages (target, track, handover, fires, munition, arming,
-//! weapon, engagement, see [`super::scope`]) get the frame checks only: id,
+//! weapon, engagement, payload, see [`super::scope`]) get the frame checks only: id,
 //! length and checksum. Their fields are never decoded, range-checked or
 //! printed; the report marks them [`Report::framing_only`].
 

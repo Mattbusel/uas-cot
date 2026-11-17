@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.2 (2026-11-17)
+
+Scope correction. The nine generic payload messages of `military.xml` can
+report and request payload arming and activation state, so they are now
+blocked like the targeting messages.
+
+- `scope::BLOCKED` adds `PAYLOAD_INFO`, `PAYLOAD_STATE`,
+  `PAYLOAD_RESOURCE`, `PAYLOAD_INHIBIT`, `PAYLOAD_MEASUREMENT`,
+  `PAYLOAD_OPERATION_REQUEST`, `PAYLOAD_OPERATION_STATUS`,
+  `PAYLOAD_CATALOGUE_STATUS` and `PAYLOAD_OPERATION_CANCEL` (53100 to
+  53108), 34 blocked messages in all. `scope::BLOCKED_WORDS` adds
+  `PAYLOAD_`, so a newer dialect's payload messages are blocked by name.
+- `Message::get`, `decode` and `encode` refuse them; the gateway drops and
+  counts them.
+- `validate` and `mavlinkm-check` give them the frame checks only (id,
+  length, checksum) with the `[out of scope: framing, length and checksum
+  only]` label; their fields are no longer decoded, checked or printed.
+- The only in-scope MAVLink-M message in the embedded dialect is now
+  `PARTICIPANT_POSITION`.
+- Tests: `every_message_is_classified`, `blocked_messages_never_produce_cot`
+  and the other block tests cover the payload messages; the protected-enum
+  check is tested with a small dialect of its own.
+
 ## 0.2.1 (2026-11-17)
 
 Scope correction. uas-cot is telemetry and position interoperability only;

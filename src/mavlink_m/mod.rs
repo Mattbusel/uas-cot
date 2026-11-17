@@ -8,15 +8,16 @@
 //! the vehicles that [`crate::mavlink`] maps from `HEARTBEAT` and
 //! `GLOBAL_POSITION_INT`. Nothing in the targeting chain is handled: every
 //! target, track, handover, fires, munition, arming, weapon and engagement
-//! message is refused at compile time (the translated list cannot contain
-//! one) and at run time (the gateway drops them, and [`Message`] will not
-//! decode or encode them). See [`scope`].
+//! message, and every generic payload (`PAYLOAD_*`) message, is refused at
+//! compile time (the translated list cannot contain one) and at run time
+//! (the gateway drops them, and [`Message`] will not decode or encode
+//! them). See [`scope`].
 //!
 //! [`validate`] checks frames against the dialect definition: ids,
 //! lengths and `CRC_EXTRA` checksums for every message, plus enum values
 //! (including the extended-Hamming protected enums), bitmasks and stated
-//! ranges for the in-scope messages only. Out-of-scope messages are never
-//! decoded.
+//! ranges for in-scope messages only (in the embedded dialect,
+//! `PARTICIPANT_POSITION`). Out-of-scope messages are never decoded.
 //!
 //! The dialect is the embedded copy of `military.xml` from
 //! [Dronecode/mavlink-military](https://github.com/Dronecode/mavlink-military)
