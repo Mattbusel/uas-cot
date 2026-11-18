@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.1 (2026-11-18)
+
+- `rid::tracked`: the aircraft and operator events for a
+  `remoteid::TrackedUas`, with the transmitter's trust verdict and reasons
+  appended to the aircraft remarks (`Trust: spoofed (known_spoofer,
+  teleport; tool: ...).`). `rid::trust_remarks` formats that sentence
+  from any `remoteid::Assessment`. Until now a TAK user saw a spoofed
+  Remote ID broadcast as an ordinary aircraft marker.
+- `uas2cot pcap` uses it, so every Remote ID aircraft marker it sends
+  carries the verdict. The expected output for the two Open Drone ID
+  sample captures changes only by ` Trust: plausible.` in each aircraft's
+  remarks; a new test runs a capture of the jjshoots/RemoteIDSpoofer
+  ESP8266 sketch and checks the marker turns `suspicious`.
+- The `rid_to_cot` example and `docs/integration.md` use `rid::tracked`.
+- No change to existing functions, types or the other event fields.
+
 ## 0.3.0 (2026-11-17)
 
 Integration release. Breaking only through the `remoteid` upgrade.

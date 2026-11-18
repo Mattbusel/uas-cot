@@ -14,7 +14,7 @@ All events are CoT 2.0 (`<event version="2.0">`) with `<point>` and
 | `point ce le` | horizontal and vertical accuracy, metres; unknown is 9999999 |
 | `track course speed` | direction, horizontal speed |
 | `contact callsign` | the Basic ID |
-| `remarks` | UA type, status, height and its reference, vertical speed, operator ID, self ID |
+| `remarks` | UA type, status, height and its reference, vertical speed, operator ID, self ID; with `rid::tracked` (and in `uas2cot pcap`) also `Trust: <verdict> (<reasons>).` from `remoteid` |
 | stale | 30 s |
 
 The operator is a second event: `uid` `rid-op-<id>`, type `b-m-p-s-m`

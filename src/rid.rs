@@ -20,9 +20,14 @@
 //! assert_eq!(e.kind, "a-u-A-M-F-Q");
 //! assert_eq!(e.point.hae, 237.0);
 //! ```
+//!
+//! With a [`remoteid::Tracker`], [`tracked`] also writes the transmitter's
+//! trust verdict (spoofed, suspicious, plausible, authenticated) and its
+//! reasons into the aircraft's remarks, so a TAK user sees why a marker
+//! should not be believed.
 
 use crate::{Event, Point, Track, UNKNOWN_ERROR};
-use remoteid::{UaType, UasData};
+use remoteid::{Assessment, TrackedUas, UaType, UasData};
 use std::fmt::Write as _;
 
 /// How Remote ID records become events.
@@ -213,4 +218,64 @@ pub fn events(
         .into_iter()
         .chain(operator(data, fallback_id, now_us, opts))
         .collect()
+}
+
+/// The trust verdict as one remarks sentence, for example
+/// `Trust: spoofed (teleport, known_spoofer; tool: jjshoots/RemoteIDSpoofer).`
+/// or `Trust: plausible.` when nothing contradicts the broadcast.
+pub fn trust_remarks(a: &Assessment) -> String {
+    let mut r = format!("Trust: {}", a.verdict.name());
+    let reasons: Vec<&str> = a.reasons.iter().map(|x| x.name()).collect();
+    if !reasons.is_empty() || a.spoofer.is_some() {
+        r.push_str(" (");
+        r.push_str(&reasons.join(", "));
+        if let Some(t) = a.spoofer {
+            if !reasons.is_empty() {
+                r.push_str("; ");
+            }
+            let _ = write!(r, "tool: {}", t.name());
+        }
+        r.push(')');
+    }
+    r.push('.');
+    r
+}
+
+/// [`events`] for a transmitter kept by [`remoteid::Tracker`], with
+/// [`trust_remarks`] for its latest assessment appended to the aircraft's
+/// remarks. Markers and UIDs are the same as from [`events`]; the
+/// affiliation stays `opts.affiliation`, so a caller who wants spoofed
+/// aircraft drawn as suspect sets it from `uas.assessment.verdict`.
+///
+/// ```
+/// use uas_cot::remoteid::{BasicId, IdType, Location, Message, Tracker, Transmitter, UaType};
+/// use uas_cot::rid::{self, Options};
+///
+/// let mut tracker = Tracker::default();
+/// let tx = Transmitter::Ble([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
+/// let id = BasicId::new(IdType::SerialNumber, UaType::HelicopterOrMultirotor, "1596F35074529ABCDEFG").unwrap();
+/// let mut loc = Location::default();
+/// loc.latitude = 45.5470818;
+/// loc.longitude = -122.9668346;
+/// tracker.ingest(tx, 1, &Message::BasicId(id).encode().unwrap(), 1_000);
+/// let uas = tracker.ingest(tx, 2, &Message::Location(loc).encode().unwrap(), 1_100);
+///
+/// let events = rid::tracked(uas, None, 1_100_000, &Options::default());
+/// assert!(events[0].remarks.as_deref().unwrap().ends_with("Trust: plausible."));
+/// ```
+pub fn tracked(
+    uas: &TrackedUas,
+    fallback_id: Option<&str>,
+    now_us: u64,
+    opts: &Options,
+) -> Vec<Event> {
+    let mut out = events(&uas.data, fallback_id, now_us, opts);
+    if let Some(air) = out.first_mut().filter(|e| e.kind.starts_with("a-")) {
+        let t = trust_remarks(&uas.assessment);
+        air.remarks = Some(match air.remarks.take() {
+            Some(r) => format!("{r} {t}"),
+            None => t,
+        });
+    }
+    out
 }

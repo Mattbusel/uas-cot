@@ -305,7 +305,7 @@ fn run_pcap(a: &mut Args) -> io::Result<usize> {
         let mac: String = r.source.iter().map(|b| format!("{b:02X}")).collect();
         let uas = tracker.ingest_wifi(&r, ts / 1000);
         pacer.wait(ts);
-        for e in rid::events(&uas.data, Some(&mac), ts, &opts) {
+        for e in rid::tracked(uas, Some(&mac), ts, &opts) {
             a.sink.send(&e)?;
             n += 1;
         }

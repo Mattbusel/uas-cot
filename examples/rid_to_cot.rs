@@ -16,7 +16,9 @@ fn on_advertisement(
     now_ms: u64,
 ) -> Option<String> {
     let uas = tracker.ingest_ble(mac, &ble::find_in_advertising_data(adv)?, now_ms);
-    Some(rid::aircraft(&uas.data, None, now_ms * 1000, &Options::default())?.to_xml())
+    // `tracked` adds the transmitter's trust verdict to the remarks.
+    let events = rid::tracked(uas, None, now_ms * 1000, &Options::default());
+    Some(events.first()?.to_xml())
 }
 
 fn main() -> Result<(), uas_cot::remoteid::Error> {

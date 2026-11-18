@@ -5,6 +5,9 @@
 //!   (samples.ffmpeg.org/MPEG2/mpegts-klv).
 //! * `odid_wifi_bcn_sample.pcap`, `odid_wifi_sample.pcap`: Remote ID Wi-Fi
 //!   Beacon and NAN captures from opendroneid/wireshark-dissector (Apache-2.0).
+//! * `jjshoots_esp8266_beacon_1drone.pcap`: one fake drone from the
+//!   jjshoots/RemoteIDSpoofer ESP8266 sketch, from the `remoteid` crate's
+//!   spoof corpus (`remoteid/docs/spoof-corpus.md`).
 //! * A MAVLink `.tlog` built here from known values.
 //!
 //! `tests/data/expected/*.cot` hold the expected events. CI validates them
@@ -136,6 +139,8 @@ fn remote_id_wifi_beacon() {
     assert!(air.contains("<point lat=\"45.5470818\" lon=\"-122.9668346\" hae=\"237.0\""));
     assert!(air.contains("<track course=\"280.0\" speed=\"20.50\"/>"));
     assert!(air.contains("Operator ID: GBR-OP-123ABCD."));
+    // A real transmitter: remoteid finds nothing that contradicts it.
+    assert!(air.contains("Trust: plausible.</remarks>"));
     let op = lines
         .iter()
         .rev()
@@ -154,6 +159,28 @@ fn remote_id_wifi_nan() {
         well_formed(l);
     }
     check_golden("odid_wifi_sample.cot", &out);
+}
+
+#[test]
+fn remote_id_spoofer_is_flagged_in_remarks() {
+    let path = data("jjshoots_esp8266_beacon_1drone.pcap");
+    let out = run(&["pcap", path.to_str().unwrap()]);
+    let air: Vec<&str> = out.lines().filter(|l| l.contains("type=\"a-")).collect();
+    assert!(!air.is_empty());
+    for l in &air {
+        well_formed(l);
+        assert!(
+            l.contains(" Trust: "),
+            "every aircraft event carries a verdict"
+        );
+    }
+    // The first frames have nothing to compare against; once the fake
+    // course and position disagree, the marker says so.
+    let last = air.last().unwrap();
+    assert!(
+        last.contains("Trust: suspicious (reported_course_mismatch"),
+        "{last}"
+    );
 }
 
 fn synthetic_tlog(path: &Path) {
