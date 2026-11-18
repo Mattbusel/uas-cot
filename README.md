@@ -50,6 +50,7 @@ if let Some(event) = mavlink::vehicle(1, &pos, Some(2), uas_cot::now_us(), &Defa
 
 ## Docs
 
+- [docs/integration.md](docs/integration.md): using it as a library (features, the API to depend on, MSRV, versioning)
 - [docs/mapping.md](docs/mapping.md): which field goes where
 - [docs/mavlink-m.md](docs/mavlink-m.md): MAVLink-M scope (what is blocked and how), mapping, the conformance checks, the demo
 - [docs/tak.md](docs/tak.md): seeing it in ATAK, WinTAK and TAK Server

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 (2026-11-17)
+
+Integration release. Breaking only through the `remoteid` upgrade.
+
+- Builds against `remoteid` 0.2 (was 0.1). `rid::aircraft` and
+  `rid::operator` take `remoteid::UasData`, so a project already on
+  `remoteid` 0.2 (trust verdicts, DRIP verification) got a type mismatch
+  from uas-cot 0.2 and a second copy of `remoteid` in its tree. It now
+  shares one copy.
+- Re-exports `uas_cot::remoteid` and `uas_cot::misb`, the exact versions
+  this build uses.
+- `misb` requirement raised to 0.1.1 (version byte fix in key matching).
+- New `examples/rid_to_cot.rs` and `docs/integration.md`: features,
+  the API to depend on, MSRV and versioning.
+
 ## 0.2.2 (2026-11-17)
 
 Scope correction. The nine generic payload messages of `military.xml` can

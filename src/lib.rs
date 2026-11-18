@@ -38,6 +38,22 @@ pub mod net;
 #[cfg(feature = "remoteid")]
 pub mod rid;
 
+/// The [`remoteid`](https://docs.rs/remoteid) crate this build of uas-cot
+/// uses. Name its types through this path (`uas_cot::remoteid::Tracker`)
+/// and they always match what [`rid`] accepts, with no second copy of the
+/// crate in your dependency tree.
+#[cfg(feature = "remoteid")]
+pub use remoteid;
+
+/// The [`misb`](https://docs.rs/misb) crate this build of uas-cot uses, for
+/// the packets [`fmv`] accepts (`uas_cot::misb::st0601::Packet`).
+#[cfg(feature = "misb")]
+pub use misb;
+
+#[cfg(all(doctest, feature = "remoteid"))]
+#[doc = include_str!("../docs/integration.md")]
+struct IntegrationDoctests;
+
 /// "Unknown" circular and linear error, as CoT defines it.
 pub const UNKNOWN_ERROR: f64 = 9_999_999.0;
 
