@@ -1,10 +1,10 @@
-# uas-cot
+# uas-cot: drones belong on the TAK map, weapons messages do not belong on the wire
 
 [![crates.io](https://img.shields.io/crates/v/uas-cot.svg)](https://crates.io/crates/uas-cot)
 [![docs.rs](https://docs.rs/uas-cot/badge.svg)](https://docs.rs/uas-cot)
 [![CI](https://github.com/Mattbusel/uas-cot/actions/workflows/ci.yml/badge.svg)](https://github.com/Mattbusel/uas-cot/actions/workflows/ci.yml)
 
-Put drones on the TAK map. Remote ID, MISB KLV video metadata, MAVLink and MAVLink-M to Cursor on Target.
+Drone data arrives in four standards that do not talk to each other: Remote ID in the air, MISB KLV in the video, MAVLink on the control link, Cursor on Target on the TAK map. uas-cot puts all of them on the map, and draws a hard line: every MAVLink-M target, track, handover, fires, munition and engagement message is refused at compile time and at run time. In drone code a default is a claim about a real aircraft (a fix we upstreamed stopped a default MAVLink HEARTBEAT from serializing as SAFETY_ARMED: [rust-mavlink #576](https://github.com/mavlink/rust-mavlink/pull/576)), so interoperability code should make the dangerous message impossible to send by accident, not just undocumented.
 
 - Remote ID (Wi-Fi Beacon, NAN, Bluetooth via [`remoteid`](https://crates.io/crates/remoteid)): aircraft and operator markers
 - MISB ST 0601 KLV from STANAG 4609 video (via [`misb`](https://crates.io/crates/misb)): platform, camera field of view, sensor point of interest
