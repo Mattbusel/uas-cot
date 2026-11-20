@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2 (2026-11-20)
+
+Documentation and metadata only; no code change.
+
+- README opens with what reaches the TAK map: open Remote ID receivers
+  flagged 0 of 10 spoofed transmitters, and `uas2cot pcap` puts the
+  remoteid trust verdict on every Remote ID aircraft marker it sends.
+- crates.io description and keywords say the same.
+
 ## 0.3.1 (2026-11-18)
 
 - `rid::tracked`: the aircraft and operator events for a

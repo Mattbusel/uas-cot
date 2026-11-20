@@ -1,16 +1,16 @@
 [package]
 name = "uas-cot"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Matt Busel <matt@busel.dev>"]
 edition = "2021"
 rust-version = "1.70"
-description = "Drone telemetry to Cursor on Target for TAK (Remote ID, MISB ST 0601 KLV, MAVLink, MAVLink-M friendly positions) with the uas2cot bridge. Every targeting, fires, munition and engagement message is refused at compile time and run time."
+description = "Your TAK map shows fake drones as real ones: open Remote ID receivers flagged 0 of 10 spoofed drones. uas-cot puts a trust verdict on Remote ID markers. Drone telemetry to Cursor on Target: Remote ID (remoteid spoof verdicts), MISB ST 0601 KLV (STANAG 4609), MAVLink and MAVLink-M friendly position reports to ATAK/WinTAK/TAK Server; targeting and engagement messages refused at compile time"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Mattbusel/uas-cot"
 homepage = "https://github.com/Mattbusel/uas-cot"
 documentation = "https://docs.rs/uas-cot"
 readme = "README.md"
-keywords = ["cot", "tak", "mavlink", "remote-id", "mavlink-m"]
+keywords = ["cot", "tak", "remote-id", "counter-uas", "mavlink"]
 categories = ["aerospace::drones", "aerospace::protocols", "command-line-utilities", "network-programming"]
 exclude = ["tests/data/*", "tests/schema/*", ".github", "tools", "docs/*.gif"]
 

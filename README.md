@@ -4,6 +4,31 @@
 [![docs.rs](https://docs.rs/uas-cot/badge.svg)](https://docs.rs/uas-cot)
 [![CI](https://github.com/Mattbusel/uas-cot/actions/workflows/ci.yml/badge.svg)](https://github.com/Mattbusel/uas-cot/actions/workflows/ci.yml)
 
+**Your TAK map shows fake drones as real ones, and nothing on the marker
+tells the operator.** Remote ID bridges decode a broadcast and paint it. The
+broadcast is not a proof. We threw 10 fake drones at eight open-source
+Remote ID receivers: **0 of 10 flagged, 62 of 80 receiver and transmitter
+pairs shown as real drones**
+([receipts](https://github.com/Mattbusel/remoteid/blob/main/docs/receivers.md)).
+Feed that to TAK and a five dollar ESP8266 puts an aircraft and a pilot
+location in front of a security team, with the same marker as a real one.
+A bridge that can't say SPOOFED is passing the attacker's message along.
+
+uas-cot does not send an unjudged Remote ID marker from `uas2cot pcap`:
+every aircraft carries the [`remoteid`](https://crates.io/crates/remoteid)
+trust verdict in its remarks, `Trust: spoofed (teleport, known_spoofer; ...)`
+or `Trust: plausible.`, and remoteid flags all 10 corpus spoofers. MAVLink-M
+support is telemetry and position only: every targeting, fires and
+engagement message is refused at compile time and at run time, not by a
+config flag.
+
+| What reaches the TAK map | A decode-only Remote ID bridge | uas-cot |
+|---|---|---|
+| Spoofed Remote ID transmitter | an ordinary aircraft marker | a marker whose remarks say `Trust: spoofed (...)` |
+| Why to believe it | nothing | teleport, frozen timestamp, spoofer fingerprint, DRIP signature result |
+| MAVLink-M targeting and engagement messages | | refused at compile time and at run time |
+| CoT output | | checked against the MITRE CoT schemas in CI |
+
 Drone data arrives in four standards that do not talk to each other: Remote ID in the air, MISB KLV in the video, MAVLink on the control link, Cursor on Target on the TAK map. uas-cot puts all of them on the map, and draws a hard line: every MAVLink-M target, track, handover, fires, munition and engagement message is refused at compile time and at run time. In drone code a default is a claim about a real aircraft (a fix we upstreamed stopped a default MAVLink HEARTBEAT from serializing as SAFETY_ARMED: [rust-mavlink #576](https://github.com/mavlink/rust-mavlink/pull/576)), so interoperability code should make the dangerous message impossible to send by accident, not just undocumented.
 
 - Remote ID (Wi-Fi Beacon, NAN, Bluetooth via [`remoteid`](https://crates.io/crates/remoteid)): aircraft and operator markers
