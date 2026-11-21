@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 (2026-11-21)
+
+- `Sensor::north`: the ATAK `<sensor north>` image north bearing, written
+  wrapped to 0..360. Adding the field is a breaking change for struct
+  literals without `..Default::default()`.
+
 ## 0.3.2 (2026-11-20)
 
 Documentation and metadata only; no code change.

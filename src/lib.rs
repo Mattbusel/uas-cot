@@ -125,6 +125,8 @@ pub struct Sensor {
     pub vfov: Option<f64>,
     /// Range to the scene, metres.
     pub range: Option<f64>,
+    /// Bearing of image north, degrees true (ATAK `north`).
+    pub north: Option<f64>,
     /// Sensor name.
     pub model: Option<String>,
     /// Sensor type (`"r-e"` electro-optical, `"r-i"` infrared ...).
@@ -277,6 +279,9 @@ impl Event {
             if let Some(v) = sn.range.filter(|v| v.is_finite() && *v >= 0.0) {
                 write!(w, " range=\"{v:.1}\"")?;
             }
+            if let Some(v) = sn.north.filter(|v| v.is_finite()) {
+                write!(w, " north=\"{:.2}\"", wrap360(v, 2))?;
+            }
             if let Some(v) = &sn.model {
                 write!(w, " model=\"{}\"", Esc(v))?;
             }
@@ -428,5 +433,10 @@ mod tests {
         let x = e.to_xml();
         assert!(x.contains("<track course=\"0.0\" speed=\"0.00\"/>"), "{x}");
         assert!(x.contains("azimuth=\"10.00\" roll=\"-90.00\"/>"), "{x}");
+        e.sensor = Some(Sensor {
+            north: Some(-90.0),
+            ..Default::default()
+        });
+        assert!(e.to_xml().contains("<sensor north=\"270.00\"/>"));
     }
 }

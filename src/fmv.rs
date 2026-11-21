@@ -124,6 +124,7 @@ pub fn platform(p: &Packet<'_>, opts: &Options) -> Option<Event> {
         fov: p.float(Tag::SensorHorizontalFieldOfView),
         vfov: p.float(Tag::SensorVerticalFieldOfView),
         range: p.float(Tag::SlantRange),
+        north: None,
         model: p.text(Tag::ImageSourceSensor).map(str::to_string),
         kind: None,
     };
