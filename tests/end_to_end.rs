@@ -141,13 +141,19 @@ fn remote_id_wifi_beacon() {
     assert!(air.contains("Operator ID: GBR-OP-123ABCD."));
     // A real transmitter: remoteid finds nothing that contradicts it.
     assert!(air.contains("Trust: plausible.</remarks>"));
-    let op = lines
+    // The capture's System message says its ground position is the takeoff
+    // point, so it is a takeoff marker, not an operator marker.
+    assert!(!out.contains("uid=\"rid-op-MFG1A0123456789\""));
+    let home = lines
         .iter()
         .rev()
-        .find(|l| l.contains("uid=\"rid-op-MFG1A0123456789\""))
+        .find(|l| l.contains("uid=\"rid-takeoff-MFG1A0123456789\""))
         .unwrap();
-    assert!(op.contains("<point lat=\"45.5443876\" lon=\"-122.9726866\""));
-    assert!(op.contains("type=\"b-m-p-s-m\""));
+    assert!(home.contains("<point lat=\"45.5443876\" lon=\"-122.9726866\""));
+    assert!(home.contains("type=\"b-m-p-s-m\""));
+    assert!(home.contains(
+        "<contact callsign=\"Takeoff point of MFG1A0123456789 (operator GBR-OP-123ABCD)\"/>"
+    ));
     check_golden("odid_wifi_bcn_sample.cot", &out);
 }
 
@@ -159,6 +165,45 @@ fn remote_id_wifi_nan() {
         well_formed(l);
     }
     check_golden("odid_wifi_sample.cot", &out);
+}
+
+#[test]
+fn remote_id_affiliation_rules() {
+    let path = data("odid_wifi_bcn_sample.pcap");
+    let p = path.to_str().unwrap();
+    let plain = run(&["pcap", p]);
+    assert!(plain.contains("uid=\"rid-MFG1A0123456789\" type=\"a-u-A-M-F-Q\""));
+    let ours = run(&["pcap", p, "--friendly", "MFG1A0123456789"]);
+    let air: Vec<&str> = ours
+        .lines()
+        .filter(|l| l.contains("uid=\"rid-MFG1A0123456789\""))
+        .collect();
+    assert!(!air.is_empty());
+    for l in &air {
+        assert!(l.contains("type=\"a-f-A-M-F-Q\""), "{l}");
+    }
+    // By Operator ID too.
+    let ours = run(&["pcap", p, "--friendly", "GBR-OP-123ABCD"]);
+    assert!(ours.contains("uid=\"rid-MFG1A0123456789\" type=\"a-f-A-M-F-Q\""));
+}
+
+#[test]
+fn spoofer_with_a_friendly_id_is_not_drawn_friendly() {
+    let path = data("jjshoots_esp8266_beacon_1drone.pcap");
+    let p = path.to_str().unwrap();
+    let plain = run(&["pcap", p]);
+    let id = plain
+        .lines()
+        .find_map(|l| {
+            let rest = l.split("<contact callsign=\"").nth(1)?;
+            l.contains("type=\"a-")
+                .then(|| rest.split('"').next().unwrap().to_string())
+        })
+        .unwrap();
+    let out = run(&["pcap", p, "--friendly", &id, "--suspicious-as", "s"]);
+    let last = out.lines().rev().find(|l| l.contains("type=\"a-")).unwrap();
+    assert!(last.contains("Trust: suspicious"), "{last}");
+    assert!(last.contains("type=\"a-s-A"), "{last}");
 }
 
 #[test]

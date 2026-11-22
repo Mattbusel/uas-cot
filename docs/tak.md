@@ -20,8 +20,22 @@ Plain TCP streaming input (TAK Server default 8087, FreeTAKServer 8087):
 uas2cot tlog flight.tlog --tcp takserver:8087
 ```
 
-For a TLS input (8089), use the library: open your TLS stream and call
-`uas_cot::net::write_event` for each event.
+TLS streaming input (TAK Server default 8089, client certificate
+required), with `cargo install uas-cot --features tls`:
+
+```
+openssl pkcs12 -legacy -in truststore-root.p12 -nokeys -out ca.pem
+openssl pkcs12 -legacy -in user.p12 -clcerts -nokeys -out user.pem
+openssl pkcs12 -legacy -in user.p12 -nocerts -nodes -out user.key
+uas2cot pcap capture.pcap --tls takserver:8089 --ca ca.pem --cert user.pem --key user.key
+```
+
+The server certificate must name the host you dial. rustls does not fall
+back to the certificate's common name, so a certificate with only a CN, or
+a server reached by an IP address its certificate does not list, fails the
+name check. `--tls-any-name` (`TlsConfig::from_pem_any_name` in the
+library) accepts it when the chain verifies against `ca.pem`; an unknown or
+expired certificate still fails.
 
 ## Live sources
 

@@ -11,7 +11,8 @@
 //! [`Event`] is the CoT 2.0 event model; [`Event::to_xml`] writes the XML
 //! that TAK clients and servers accept (validated against the MITRE public
 //! release schemas in the tests). [`net`] sends events to the SA multicast
-//! group or a TAK Server TCP input.
+//! group, a TAK Server TCP input, or (feature `tls`) a TAK Server TLS input
+//! with a client certificate.
 //!
 //! ```
 //! use uas_cot::{Event, Point, Track};
@@ -49,6 +50,12 @@ pub use remoteid;
 /// the packets [`fmv`] accepts (`uas_cot::misb::st0601::Packet`).
 #[cfg(feature = "misb")]
 pub use misb;
+
+/// The [`rustls`](https://docs.rs/rustls) crate this build uses (feature
+/// `tls`), for building your own `ClientConfig` for
+/// [`net::TlsConfig::from_rustls`].
+#[cfg(feature = "tls")]
+pub use rustls;
 
 #[cfg(all(doctest, feature = "remoteid"))]
 #[doc = include_str!("../docs/integration.md")]

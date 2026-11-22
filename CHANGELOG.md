@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.0 (2026-11-22)
+
+New features; no existing function, type or field changes. The minor bump
+is for the `uas2cot` output change below.
+
+- `rid::AffiliationRules` and `rid::tracked_with`: the aircraft's CoT
+  affiliation from its remoteid trust verdict and a list of your own Basic
+  IDs or Operator IDs. Verdict rules come first, so a spoofed or
+  suspicious transmitter that copies one of your serials is never drawn
+  friendly. Defaults: spoofed to suspect (`s`), everything else unchanged.
+- `rid::operator_or_takeoff`: the System message ground position labelled
+  by its location type. A takeoff point is its own entity
+  (`rid-takeoff-<id>`, `Takeoff point of <id>`), a live or fixed operator
+  location keeps `rid-op-<id>`. `rid::operator` is unchanged.
+- Feature `tls`: `net::TlsSender` and `net::TlsConfig`, TLS streaming to a
+  TAK Server input (8089) with a client certificate, on rustls with the
+  ring provider (no OpenSSL). PEM CA, certificate and key;
+  `TlsConfig::from_pem_any_name` accepts a server certificate that chains
+  to your CA but does not name the dialled host; `TlsConfig::from_rustls`
+  takes your own `rustls::ClientConfig`. `uas_cot::rustls` re-exports it.
+  The handshake completes in `connect`, so a bad certificate fails there.
+- `uas2cot`: `--tls addr --ca --cert --key [--tls-any-name]` (feature
+  `tls`), `--friendly <id>` (repeatable), `--spoofed-as <c>`,
+  `--suspicious-as <c>`. `uas2cot pcap` now uses `rid::tracked_with`: a
+  takeoff point is sent as `rid-takeoff-<id>` instead of `rid-op-<id>`
+  (both Open Drone ID sample captures change only there), and a spoofed
+  verdict draws the aircraft as suspect.
+
 ## 0.5.0 (2026-11-21)
 
 - Depends on remoteid 0.3 (was 0.2), so `uas_cot::remoteid` now carries

@@ -35,7 +35,9 @@ Drone data arrives in four standards that do not talk to each other: Remote ID i
 - MISB ST 0601 KLV from STANAG 4609 video (via [`misb`](https://crates.io/crates/misb)): platform, camera field of view, sensor point of interest
 - MAVLink `GLOBAL_POSITION_INT`: vehicle markers, from a `.tlog` or live UDP
 - MAVLink-M (Dronecode `military.xml`, feature `mavlink-m`): friendly position reports (`PARTICIPANT_POSITION`) as CoT markers, plus `mavlinkm-check`, a framing and checksum checker for MAVLink-M traffic. Telemetry and position interoperability only: every target, track, handover, fires, munition and engagement message, and every generic payload (`PAYLOAD_*`) message, is refused at compile time and at run time. See [docs/mavlink-m.md](docs/mavlink-m.md)
-- Sends to the SA multicast group (239.2.3.1:6969), a TAK Server TCP input, or stdout
+- Remote ID affiliation rules: mark your own fleet friendly by serial or Operator ID (`--friendly`), and a spoofed or suspicious transmitter is never drawn friendly, even when it copies one of your serials
+- The Remote ID ground position labelled for what it is: a takeoff point gets its own `rid-takeoff-<id>` marker instead of a marker that says "operator"
+- Sends to the SA multicast group (239.2.3.1:6969), a TAK Server TCP input, a TAK Server TLS input with a client certificate (feature `tls`, rustls, no OpenSSL), or stdout
 - Output passes the MITRE CoT schemas and converts cleanly to TAK Protocol v1
 
 ## Install
@@ -43,12 +45,14 @@ Drone data arrives in four standards that do not talk to each other: Remote ID i
 ```
 cargo install uas-cot                       # Remote ID, KLV, MAVLink
 cargo install uas-cot --features mavlink-m  # plus MAVLink-M and mavlinkm-check
+cargo install uas-cot --features tls        # plus TAK Server TLS (8089) streaming
 ```
 
 ## Use
 
 ```
 uas2cot pcap capture.pcap --udp 239.2.3.1:6969        # Remote ID from a Wi-Fi capture
+uas2cot pcap capture.pcap --friendly MFG1A0123456789 --suspicious-as s     --tls takserver:8089 --ca ca.pem --cert user.pem --key user.key   # your fleet friendly, over TLS
 uas2cot klv flight.klv --video rtsp://cam/1 --realtime   # ffmpeg -i in.ts -map 0:d -c copy -f data flight.klv
 uas2cot tlog flight.tlog --tcp takserver:8087
 uas2cot mavlink-udp 0.0.0.0:14550 --udp 239.2.3.1:6969   # with mavlink-m: MAVLink-M friendly positions too
@@ -72,6 +76,32 @@ if let Some(event) = mavlink::vehicle(1, &pos, Some(2), uas_cot::now_us(), &Defa
 }
 # Ok::<(), std::io::Error>(())
 ```
+
+### Who is friendly, and where the pilot is not
+
+```rust
+use uas_cot::rid::{self, AffiliationRules, Options};
+
+let rules = AffiliationRules::default()   // spoofed verdict: suspect (s)
+    .friendly_id("MFG1A0123456789")       // our drone: friendly (f) ...
+    .suspicious_as('s');                  // ... unless its broadcast looks fake
+// uas: the &TrackedUas that remoteid's Tracker::ingest returns
+let events = rid::tracked_with(uas, None, uas_cot::now_us(), &Options::default(), &rules);
+```
+
+A friendly list matched on serial numbers alone is what a spoofer exploits:
+the serial is in the broadcast, so anyone can copy it. `AffiliationRules`
+checks the remoteid verdict first, and only a transmitter that is not
+spoofed or suspicious can match the list (`require_authenticated_friendly`
+makes it DRIP signed only).
+
+Remote ID sends one ground position with a type: live operator GNSS, a
+fixed operator location, or the takeoff point. A marker that calls all
+three "operator" (as uas-cot 0.5 did) sends a security team to where the
+drone left from, not to where the pilot stands. In both Open Drone ID sample captures in `tests/data`
+the position is the takeoff point; `tracked_with` and `uas2cot` put it on
+the map as `Takeoff point of MFG1A0123456789`, a separate entity from any
+live operator marker.
 
 ## Docs
 

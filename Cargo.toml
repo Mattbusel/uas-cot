@@ -1,6 +1,6 @@
 [package]
 name = "uas-cot"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Matt Busel <matt@busel.dev>"]
 edition = "2021"
 rust-version = "1.70"
@@ -27,15 +27,21 @@ cli = ["remoteid", "misb", "dep:mavlink-tlog"]
 ## with `cli`). Target, track, fires, engagement and payload messages are
 ## refused.
 mavlink-m = ["dep:roxmltree"]
+## TLS streaming to a TAK Server (port 8089, client certificate) with
+## rustls and the ring provider: `net::TlsSender`, and `--tls` in uas2cot.
+## Needs Rust 1.71.
+tls = ["dep:rustls"]
 
 [dev-dependencies]
 mavlink-tlog = "0.1"
+rcgen = "0.13"
 
 [dependencies]
 remoteid = { version = "0.3", optional = true }
 misb = { version = "0.1.1", optional = true }
 mavlink-tlog = { version = "0.1", optional = true }
 roxmltree = { version = "0.21", optional = true }
+rustls = { version = "0.23.27", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
 
 [[bin]]
 name = "uas2cot"

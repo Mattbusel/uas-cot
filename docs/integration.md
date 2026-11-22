@@ -11,7 +11,7 @@ For a library or service, turn off the command line tools:
 
 ```toml
 [dependencies]
-uas-cot = { version = "0.3", default-features = false, features = ["remoteid", "misb"] }
+uas-cot = { version = "0.6", default-features = false, features = ["remoteid", "misb"] }
 ```
 
 | Feature | Default | Adds | Extra dependencies |
@@ -20,6 +20,7 @@ uas-cot = { version = "0.3", default-features = false, features = ["remoteid", "
 | `misb` | yes | `fmv`: MISB ST 0601 KLV to CoT | `misb` (no dependencies of its own) |
 | `cli` | yes | the `uas2cot` binary | `mavlink-tlog` (no dependencies of its own) |
 | `mavlink-m` | no | `mavlink_m`: MAVLink-M friendly position reports, `mavlinkm-check` | `roxmltree` |
+| `tls` | no | `net::TlsSender`, `net::TlsConfig`: TAK Server TLS input with a client certificate; `--tls` in `uas2cot` | `rustls` (ring provider, no OpenSSL); Rust 1.71 |
 
 With `default-features = false` and no features you get the `Event` model,
 the `mavlink` module (MAVLink `GLOBAL_POSITION_INT` and `HEARTBEAT`
@@ -53,9 +54,12 @@ directly at a compatible version.
 | `Event`, `Point`, `Track`, `Sensor`, `Link` | the CoT 2.0 event model; `Event::to_xml` writes it |
 | `rid::aircraft`, `rid::operator`, `rid::Options` | Remote ID record to aircraft and operator markers |
 | `rid::tracked`, `rid::trust_remarks` | the same for a `remoteid::TrackedUas`, with its trust verdict (spoofed, suspicious, plausible, authenticated) and reasons in the remarks |
+| `rid::tracked_with`, `rid::AffiliationRules` | `tracked`, with the affiliation chosen from the verdict and your own fleet's IDs (a spoofed or suspicious transmitter never turns friendly), and the takeoff point as its own marker |
+| `rid::operator_or_takeoff` | the System message ground position labelled for what it is: live operator, fixed operator location, or takeoff point (`<prefix>takeoff-<id>`) |
 | `fmv::events`, `fmv::platform`, `fmv::spi`, `fmv::Options` | ST 0601 packet to platform, field of view and sensor point of interest |
 | `mavlink::vehicle`, `mavlink::GlobalPositionInt` | MAVLink position payload to a vehicle marker |
 | `net::UdpSender`, `net::TcpSender`, `net::write_event` | SA multicast, TAK Server TCP input, any `io::Write` |
+| `net::TlsSender`, `net::TlsConfig` (feature `tls`) | TAK Server TLS input with a client certificate; `uas_cot::rustls` re-exports the rustls in use |
 
 Everything returns `Option<Event>` or `Vec<Event>`: a record that cannot be
 placed on the map (no position, invalid coordinates) gives `None`, never a
@@ -64,7 +68,7 @@ panic. Output is checked against the MITRE CoT schemas and converted through
 
 ## Compatibility
 
-- MSRV: Rust 1.70, checked in CI. Edition 2021.
+- MSRV: Rust 1.70, checked in CI (1.71 with the `tls` feature, which rustls needs). Edition 2021.
 - License: MIT OR Apache-2.0.
 - `#![forbid(unsafe_code)]`. CI runs on Linux, Windows and macOS.
 - Versioning: while the crate is 0.x, a breaking change bumps the minor

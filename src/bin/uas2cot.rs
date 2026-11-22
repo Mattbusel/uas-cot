@@ -13,11 +13,20 @@
 //! options:
 //!   --udp <addr>       send each event as a UDP datagram (239.2.3.1:6969 is the TAK SA multicast group)
 //!   --tcp <addr>       send to a TAK Server TCP streaming input, for example takserver:8087
+//!   --tls <addr>       (feature tls) send to a TAK Server TLS input, for example takserver:8089,
+//!                      with --ca ca.pem --cert user.pem --key user.key [--tls-any-name]
 //!   --uid <uid>        platform UID for KLV input
 //!   --video <url>      video URL to attach to the KLV platform
 //!   --affiliation <c>  u, n, f, a, s or h (defaults: f for KLV and MAVLink, u for Remote ID)
 //!   --realtime         replay files at their recorded pace
+//!   --friendly <id>    Remote ID: this Basic ID or Operator ID is one of yours (repeatable);
+//!                      drawn friendly unless its verdict is spoofed or suspicious
+//!   --spoofed-as <c>   Remote ID: affiliation for a spoofed verdict (default s, suspect)
+//!   --suspicious-as <c> Remote ID: affiliation for a suspicious verdict (default unchanged)
 //! ```
+//!
+//! Remote ID ground markers say what the broadcast position is: a takeoff
+//! point gets its own `rid-takeoff-<id>` marker, not an operator marker.
 //!
 //! Without `--udp` or `--tcp` the events are printed, one XML document per line.
 
@@ -30,6 +39,8 @@ enum Sink {
     Stdout(io::Stdout),
     Udp(UdpSender),
     Tcp(TcpSender),
+    #[cfg(feature = "tls")]
+    Tls(Box<uas_cot::net::TlsSender>),
 }
 
 impl Sink {
@@ -38,6 +49,8 @@ impl Sink {
             Sink::Stdout(o) => writeln!(o.lock(), "{}", e.to_xml()),
             Sink::Udp(u) => u.send(e),
             Sink::Tcp(t) => t.send(e),
+            #[cfg(feature = "tls")]
+            Sink::Tls(t) => t.send(e),
         }
     }
 }
@@ -50,10 +63,11 @@ struct Args {
     video: Option<String>,
     affiliation: Option<char>,
     realtime: bool,
+    rules: rid::AffiliationRules,
 }
 
 fn usage() -> ! {
-    eprintln!("usage: uas2cot <klv|tlog|pcap|mavlink-udp> <input> [--udp addr | --tcp addr] [--uid uid] [--video url] [--affiliation c] [--realtime]");
+    eprintln!("usage: uas2cot <klv|tlog|pcap|mavlink-udp> <input> [--udp addr | --tcp addr | --tls addr --ca f --cert f --key f [--tls-any-name]] [--uid uid] [--video url] [--affiliation c] [--friendly id]... [--spoofed-as c] [--suspicious-as c] [--realtime]");
     std::process::exit(2)
 }
 
@@ -69,7 +83,10 @@ fn parse_args() -> io::Result<Args> {
         video: None,
         affiliation: None,
         realtime: false,
+        rules: rid::AffiliationRules::default(),
     };
+    let mut tls_addr: Option<String> = None;
+    let (mut ca, mut cert, mut key, mut any_name) = (None, None, None, false);
     while let Some(flag) = it.next() {
         let mut val = || it.next().unwrap_or_else(|| usage());
         match flag.as_str() {
@@ -79,10 +96,70 @@ fn parse_args() -> io::Result<Args> {
             "--video" => a.video = Some(val()),
             "--affiliation" => a.affiliation = val().chars().next(),
             "--realtime" => a.realtime = true,
+            "--friendly" => a.rules = a.rules.clone().friendly_id(val()),
+            "--spoofed-as" => {
+                a.rules = a
+                    .rules
+                    .clone()
+                    .spoofed_as(val().chars().next().unwrap_or('s'))
+            }
+            "--suspicious-as" => {
+                a.rules = a
+                    .rules
+                    .clone()
+                    .suspicious_as(val().chars().next().unwrap_or('u'))
+            }
+            "--tls" => tls_addr = Some(val()),
+            "--ca" => ca = Some(val()),
+            "--cert" => cert = Some(val()),
+            "--key" => key = Some(val()),
+            "--tls-any-name" => any_name = true,
             _ => usage(),
         }
     }
+    if let Some(addr) = tls_addr {
+        a.sink = tls_sink(&addr, ca, cert, key, any_name)?;
+    }
     Ok(a)
+}
+
+#[cfg(feature = "tls")]
+fn tls_sink(
+    addr: &str,
+    ca: Option<String>,
+    cert: Option<String>,
+    key: Option<String>,
+    any_name: bool,
+) -> io::Result<Sink> {
+    let (Some(ca), Some(cert), Some(key)) = (ca, cert, key) else {
+        eprintln!("uas2cot: --tls needs --ca, --cert and --key (PEM files)");
+        std::process::exit(2)
+    };
+    let (ca, cert, key) = (
+        std::fs::read(ca)?,
+        std::fs::read(cert)?,
+        std::fs::read(key)?,
+    );
+    let cfg = if any_name {
+        uas_cot::net::TlsConfig::from_pem_any_name(&ca, &cert, &key)?
+    } else {
+        uas_cot::net::TlsConfig::from_pem(&ca, &cert, &key)?
+    };
+    Ok(Sink::Tls(Box::new(uas_cot::net::TlsSender::connect(
+        addr, &cfg,
+    )?)))
+}
+
+#[cfg(not(feature = "tls"))]
+fn tls_sink(
+    _: &str,
+    _: Option<String>,
+    _: Option<String>,
+    _: Option<String>,
+    _: bool,
+) -> io::Result<Sink> {
+    eprintln!("uas2cot: built without TLS; cargo install uas-cot --features tls");
+    std::process::exit(2)
 }
 
 /// Sleeps so that events go out at the pace of their timestamps.
@@ -305,7 +382,7 @@ fn run_pcap(a: &mut Args) -> io::Result<usize> {
         let mac: String = r.source.iter().map(|b| format!("{b:02X}")).collect();
         let uas = tracker.ingest_wifi(&r, ts / 1000);
         pacer.wait(ts);
-        for e in rid::tracked(uas, Some(&mac), ts, &opts) {
+        for e in rid::tracked_with(uas, Some(&mac), ts, &opts, &a.rules) {
             a.sink.send(&e)?;
             n += 1;
         }

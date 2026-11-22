@@ -1,11 +1,17 @@
 //! Sending events: UDP (the TAK SA multicast group, or a TAK Server UDP
-//! input) and TCP (a TAK Server plain streaming input, usually port 8087).
-//! For TLS inputs (port 8089), wrap your own TLS stream and call
-//! [`write_event`].
+//! input), TCP (a TAK Server plain streaming input, usually port 8087) and,
+//! with the `tls` feature, TLS with a client certificate (`TlsSender`, the
+//! TAK Server streaming input on port 8089). Without the feature, wrap your
+//! own TLS stream and call [`write_event`].
 
 use crate::Event;
 use std::io::{self, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs, UdpSocket};
+
+#[cfg(feature = "tls")]
+mod tls;
+#[cfg(feature = "tls")]
+pub use tls::{TlsConfig, TlsSender};
 
 /// The TAK situational awareness multicast group, `239.2.3.1:6969`.
 pub const SA_MULTICAST: &str = "239.2.3.1:6969";
