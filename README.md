@@ -1,26 +1,48 @@
-# uas-cot: drones belong on the TAK map, weapons messages do not belong on the wire
+# uas-cot
+
+**A five dollar board can put a fake drone and a fake pilot on your TAK map, with the same marker as a real one. uas-cot stamps every Remote ID marker SPOOFED or PLAUSIBLE before it reaches the map.**
+
+![MAVLink + MAVLink-M to CoT, simulated scenario](https://raw.githubusercontent.com/Mattbusel/uas-cot/master/docs/mavlink-m-demo.gif)
+
+*uas2cot output for the simulated scenario in `examples/mavlink_m_sim.rs`
+(synthetic data): two drones, plus a friendly ground team and a friendly
+survey boat relayed as MAVLink-M PPLI reports.*
+
+**[Live demo](https://mattbusel.github.io/drone-demos/)**
 
 [![crates.io](https://img.shields.io/crates/v/uas-cot.svg)](https://crates.io/crates/uas-cot)
+[![downloads](https://img.shields.io/crates/d/uas-cot.svg)](https://crates.io/crates/uas-cot)
 [![docs.rs](https://docs.rs/uas-cot/badge.svg)](https://docs.rs/uas-cot)
+[![license](https://img.shields.io/crates/l/uas-cot.svg)](#license)
 [![CI](https://github.com/Mattbusel/uas-cot/actions/workflows/ci.yml/badge.svg)](https://github.com/Mattbusel/uas-cot/actions/workflows/ci.yml)
 
-**Your TAK map shows fake drones as real ones, and nothing on the marker
-tells the operator.** Remote ID bridges decode a broadcast and paint it. The
-broadcast is not a proof. We threw 10 fake drones at eight open-source
-Remote ID receivers: **0 of 10 flagged, 62 of 80 receiver and transmitter
-pairs shown as real drones**
-([receipts](https://github.com/Mattbusel/remoteid/blob/main/docs/receivers.md)).
-Feed that to TAK and a five dollar ESP8266 puts an aircraft and a pilot
-location in front of a security team, with the same marker as a real one.
-A bridge that can't say SPOOFED is passing the attacker's message along.
+Remote ID bridges decode a broadcast and paint it on the map. The broadcast is
+not a proof. uas-cot never sends an unjudged marker: every aircraft carries the
+[`remoteid`](https://crates.io/crates/remoteid) trust verdict in its remarks,
+`Trust: spoofed (teleport, known_spoofer; ...)` or `Trust: plausible.`, checked
+against teleport, frozen timestamps, spoofer fingerprints and DRIP signatures.
+MAVLink-M support is telemetry and position only: every targeting, fires and
+engagement message is refused at compile time and at run time, not by a config
+flag. CoT output is checked against the MITRE CoT schemas in CI and converts
+cleanly to TAK Protocol v1.
 
-uas-cot does not send an unjudged Remote ID marker from `uas2cot pcap`:
-every aircraft carries the [`remoteid`](https://crates.io/crates/remoteid)
-trust verdict in its remarks, `Trust: spoofed (teleport, known_spoofer; ...)`
-or `Trust: plausible.`, and remoteid flags all 10 corpus spoofers. MAVLink-M
-support is telemetry and position only: every targeting, fires and
-engagement message is refused at compile time and at run time, not by a
-config flag.
+```
+$ uas2cot pcap capture.pcap --udp 239.2.3.1:6969
+rid-1A0123456789   aircraft   47.39774, 8.54559   Trust: plausible.
+rid-takeoff-1A01   takeoff     47.39770, 8.54551   Takeoff point of MFG1A0123456789
+rid-9900112233DE   aircraft   47.39801, 8.54490   Trust: spoofed (teleport, known_spoofer)
+  -> 3 CoT events sent to 239.2.3.1:6969
+```
+
+**Your TAK map shows fake drones as real ones, and nothing on the marker tells
+the operator.** We threw 10 fake drones at eight open-source Remote ID
+receivers: **0 of 10 flagged, 62 of 80 receiver and transmitter pairs shown as
+real drones**
+([receipts](https://github.com/Mattbusel/remoteid/blob/main/docs/receivers.md)).
+Feed that to TAK and a five dollar ESP8266 puts an aircraft and a pilot location
+in front of a security team, with the same marker as a real one. A bridge that
+can't say SPOOFED is passing the attacker's message along. remoteid flags all 10
+corpus spoofers.
 
 | What reaches the TAK map | A decode-only Remote ID bridge | uas-cot |
 |---|---|---|
@@ -58,12 +80,6 @@ uas2cot tlog flight.tlog --tcp takserver:8087
 uas2cot mavlink-udp 0.0.0.0:14550 --udp 239.2.3.1:6969   # with mavlink-m: MAVLink-M friendly positions too
 mavlinkm-check tlog flight.tlog                           # MAVLink-M traffic against military.xml
 ```
-
-![MAVLink + MAVLink-M to CoT, simulated scenario](https://raw.githubusercontent.com/Mattbusel/uas-cot/master/docs/mavlink-m-demo.gif)
-
-*uas2cot output for the simulated scenario in `examples/mavlink_m_sim.rs`
-(synthetic data): two drones, plus a friendly ground team and a friendly
-survey boat relayed as MAVLink-M PPLI reports.*
 
 As a library:
 
