@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 (2026-11-21)
+
+- Depends on remoteid 0.3 (was 0.2), so `uas_cot::remoteid` now carries
+  `remoteid::capture`: pcap, pcapng and RIDF captures straight into a
+  `Tracker` and on to `rid::tracked`. Breaking only because the re-exported
+  remoteid moved a minor version.
+
 ## 0.4.0 (2026-11-21)
 
 - `Sensor::north`: the ATAK `<sensor north>` image north bearing, written
