@@ -62,6 +62,14 @@ Drone data arrives in four standards that do not talk to each other: Remote ID i
 - Sends to the SA multicast group (239.2.3.1:6969), a TAK Server TCP input, a TAK Server TLS input with a client certificate (feature `tls`, rustls, no OpenSSL), or stdout
 - Output passes the MITRE CoT schemas and converts cleanly to TAK Protocol v1
 
+## How it works: watch the bytes decode
+
+You are watching the real wire bytes of a real frame resolve into the decoded fields. The real ASTM F3411 Location/Vector message: the lat and lon int32s (scaled by 1e7) flipping and resolving to decimal degrees on a map, with the scaling math shown. remoteid decodes it; uas-cot turns it into the TAK marker.
+
+![ASTM F3411 Location/Vector message decoding byte by byte](docs/bit-f3411-location.gif)
+
+[See the live gallery piece](https://mattbusel.github.io/drone-demos/bits/f3411-location/)
+
 ## Install
 
 ```
