@@ -1,6 +1,6 @@
 [package]
 name = "uas-cot"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Matt Busel <matt@busel.dev>"]
 edition = "2021"
 rust-version = "1.70"

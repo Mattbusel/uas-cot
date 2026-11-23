@@ -23,6 +23,9 @@
 //!                      drawn friendly unless its verdict is spoofed or suspicious
 //!   --spoofed-as <c>   Remote ID: affiliation for a spoofed verdict (default s, suspect)
 //!   --suspicious-as <c> Remote ID: affiliation for a suspicious verdict (default unchanged)
+//!   --picture          Remote ID: enrich each aircraft marker with a plain-language headline
+//!                      (model identity, trust verdict, launch point) and join its takeoff
+//!                      point to the aircraft with a link
 //! ```
 //!
 //! Remote ID ground markers say what the broadcast position is: a takeoff
@@ -64,10 +67,11 @@ struct Args {
     affiliation: Option<char>,
     realtime: bool,
     rules: rid::AffiliationRules,
+    picture: bool,
 }
 
 fn usage() -> ! {
-    eprintln!("usage: uas2cot <klv|tlog|pcap|mavlink-udp> <input> [--udp addr | --tcp addr | --tls addr --ca f --cert f --key f [--tls-any-name]] [--uid uid] [--video url] [--affiliation c] [--friendly id]... [--spoofed-as c] [--suspicious-as c] [--realtime]");
+    eprintln!("usage: uas2cot <klv|tlog|pcap|mavlink-udp> <input> [--udp addr | --tcp addr | --tls addr --ca f --cert f --key f [--tls-any-name]] [--uid uid] [--video url] [--affiliation c] [--friendly id]... [--spoofed-as c] [--suspicious-as c] [--picture] [--realtime]");
     std::process::exit(2)
 }
 
@@ -84,6 +88,7 @@ fn parse_args() -> io::Result<Args> {
         affiliation: None,
         realtime: false,
         rules: rid::AffiliationRules::default(),
+        picture: false,
     };
     let mut tls_addr: Option<String> = None;
     let (mut ca, mut cert, mut key, mut any_name) = (None, None, None, false);
@@ -96,6 +101,7 @@ fn parse_args() -> io::Result<Args> {
             "--video" => a.video = Some(val()),
             "--affiliation" => a.affiliation = val().chars().next(),
             "--realtime" => a.realtime = true,
+            "--picture" => a.picture = true,
             "--friendly" => a.rules = a.rules.clone().friendly_id(val()),
             "--spoofed-as" => {
                 a.rules = a
@@ -382,7 +388,15 @@ fn run_pcap(a: &mut Args) -> io::Result<usize> {
         let mac: String = r.source.iter().map(|b| format!("{b:02X}")).collect();
         let uas = tracker.ingest_wifi(&r, ts / 1000);
         pacer.wait(ts);
-        for e in rid::tracked_with(uas, Some(&mac), ts, &opts, &a.rules) {
+        let events = if a.picture {
+            // A Wi-Fi capture carries no video, so there is no camera ground
+            // target here; the headline, model identity and joined takeoff
+            // point still apply.
+            rid::tracked_picture(uas, Some(&mac), ts, &opts, &a.rules, None)
+        } else {
+            rid::tracked_with(uas, Some(&mac), ts, &opts, &a.rules)
+        };
+        for e in events {
             a.sink.send(&e)?;
             n += 1;
         }

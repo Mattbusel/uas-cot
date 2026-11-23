@@ -228,6 +228,61 @@ fn remote_id_spoofer_is_flagged_in_remarks() {
     );
 }
 
+#[test]
+fn remote_id_picture_joins_the_whole_story() {
+    // Real opendroneid Wi-Fi Beacon sample. With --picture, the aircraft
+    // marker an operator taps reads as one plain line, and the takeoff point
+    // is joined back to the aircraft instead of floating on its own.
+    let out = run(&[
+        "pcap",
+        data("odid_wifi_bcn_sample.pcap").to_str().unwrap(),
+        "--picture",
+    ]);
+    for l in out.lines() {
+        well_formed(l);
+    }
+    let air = out
+        .lines()
+        .rev()
+        .find(|l| l.contains("<event version=\"2.0\" uid=\"rid-MFG1A0123456789\""))
+        .unwrap();
+    // One plain line the operator reads: identity, verdict in capitals, and
+    // where it launched. This sample's Basic ID is not typed as a CTA-2063-A
+    // serial number, so no maker code is claimed for it (that path, with a
+    // real serial, is covered by the rid::tracked_picture unit tests); the
+    // library does not guess a maker from an id of the wrong type.
+    assert!(air.contains("Undeclared-type MFG1A0123456789."), "{air}");
+    assert!(!air.contains("maker code"), "{air}");
+    assert!(air.contains("Trust: PLAUSIBLE."), "{air}");
+    assert!(air.contains("Launched 45.544388, -122.972687."), "{air}");
+    // The takeoff point now links back to the aircraft.
+    let home = out
+        .lines()
+        .rev()
+        .find(|l| l.contains("<event version=\"2.0\" uid=\"rid-takeoff-MFG1A0123456789\""))
+        .unwrap();
+    assert!(
+        home.contains("<link uid=\"rid-MFG1A0123456789\" type=\"a-u-A-M-F-Q\" relation=\"p-s\"/>"),
+        "{home}"
+    );
+    check_golden("odid_wifi_bcn_sample_picture.cot", &out);
+
+    // A spoofer is still drawn suspect and the headline says so in capitals.
+    let out = run(&[
+        "pcap",
+        data("jjshoots_esp8266_beacon_1drone.pcap")
+            .to_str()
+            .unwrap(),
+        "--picture",
+        "--suspicious-as",
+        "s",
+    ]);
+    // Aircraft events carry the headline; the takeoff marker does not.
+    let last = out.lines().rev().find(|l| l.contains("Trust: ")).unwrap();
+    assert!(last.contains("Trust: SUSPICIOUS."), "{last}");
+    assert!(last.contains("type=\"a-s-A"), "{last}");
+}
+
 fn synthetic_tlog(path: &Path) {
     use mavlink_tlog::frame::{encode, Header, Version};
     let mut w = mavlink_tlog::TlogWriter::new(std::fs::File::create(path).unwrap());

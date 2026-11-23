@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.7.0 (2026-11-22)
+
+New features; no existing function, type or field changes. The minor bump is
+for the new `rid::tracked_picture` and the `uas2cot pcap --picture` output it
+drives.
+
+The question this answers: a TAK operator who taps a Remote ID marker should
+see what the drone is, whether to believe it, where it launched and what it
+is watching, without decoding the CoT type or reading past a bare serial.
+
+- `rid::headline`: one plain-language line for the top of an aircraft's
+  remarks. The model identity (UA type, broadcast id, and the ANSI/CTA-2063-A
+  manufacturer code when the Basic ID is a serial number), the trust verdict
+  in capitals (`Trust: PLAUSIBLE`, `Trust: SPOOFED`), the launch point, and,
+  when supplied, the camera ground target. Every field is from the broadcast,
+  or from the caller for the camera point; nothing is guessed.
+- `rid::manufacturer_code`: the four-character maker code decoded from a
+  CTA-2063-A serial the aircraft broadcast, or `None` for an id that is not a
+  serial number. The library does not map codes to brand names (there is no
+  public registry to cite) or read a code from an id of the wrong type.
+- `rid::tracked_picture`: like `rid::tracked_with`, plus the `headline` at the
+  top of the aircraft remarks, a `<link>` from the ground (takeoff or
+  operator) marker back to the aircraft (relation `p-s`), so ATAK draws the
+  launch point joined to the drone instead of a stray marker, and, when a
+  camera ground target is supplied, a third event: the camera point of
+  interest (`<prefix>spi-<id>`, `b-m-p-s-p-i`) linked to the aircraft, so the
+  operator sees where it is filming. The camera point is the caller's, because
+  a Remote ID broadcast carries no camera data and MISB video carries no
+  Remote ID serial: pairing a feed to an aircraft is the operator's call.
+- `uas2cot pcap --picture`: emits the enriched markers. A Wi-Fi capture has no
+  video, so there is no camera target there; the headline, model identity and
+  joined takeoff point still apply. A spoofer is still never drawn friendly.
+- Tests: `rid` unit tests check the headline text and the joined CoT XML on a
+  real CTA-2063-A serial; a new end-to-end test runs `--picture` on the
+  opendroneid Wi-Fi Beacon sample and the jjshoots spoofer capture, with a new
+  golden (`odid_wifi_bcn_sample_picture.cot`) validated against the MITRE CoT
+  schemas and round-tripped through TAK Protocol v1 in CI.
+
 ## 0.6.0 (2026-11-22)
 
 New features; no existing function, type or field changes. The minor bump

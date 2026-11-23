@@ -127,6 +127,55 @@ the position is the takeoff point; `tracked_with` and `uas2cot` put it on
 the map as `Takeoff point of MFG1A0123456789`, a separate entity from any
 live operator marker.
 
+### The whole story on one marker
+
+A decode-only bridge drops a marker whose callsign is a serial and whose type
+is `a-u-A-M-F-Q`. The operator still has to ask: what is it, do I believe it,
+where did it launch, what is it watching. `rid::tracked_picture` (and
+`uas2cot pcap --picture`) answer all four on the aircraft itself:
+
+```
+uas2cot pcap capture.pcap --picture --udp 239.2.3.1:6969
+```
+
+The aircraft remarks open with a one-line headline, for example from the
+opendroneid Wi-Fi Beacon sample:
+
+```
+Undeclared-type MFG1A0123456789. Trust: PLAUSIBLE. Launched 45.544388, -122.972687. ...
+```
+
+and, with a real ANSI/CTA-2063-A serial, the maker code the airframe
+broadcast:
+
+```
+HelicopterOrMultirotor 1596F35074529ABCDEFG (maker code 1596 per CTA-2063-A). Trust: PLAUSIBLE. Launched 45.544388, -122.972687. Camera on 38.895000, -77.030000.
+```
+
+- **What it is**: the UA type and, when the Basic ID is a serial number, the
+  four-character manufacturer code decoded from the serial the aircraft sent.
+  No brand-name lookup is invented, and a code is never read from an id of the
+  wrong type.
+- **Whether it is fake**: the trust verdict in capitals, with the reasons kept
+  in the detail that follows.
+- **Where it launched**: the takeoff (or operator) marker, now joined to the
+  aircraft with a `<link>` so ATAK draws it connected, not as a stray marker.
+- **What it is watching**: when you pair the aircraft with a MISB ST 0601
+  video feed, pass its frame center as the camera target and
+  `tracked_picture` adds a sensor point of interest linked to the aircraft.
+  The pairing is yours: a Remote ID broadcast carries no camera data, and the
+  video carries no Remote ID serial.
+
+```rust
+use uas_cot::{rid::{self, AffiliationRules, Options}, Point};
+
+// camera: the frame center of a correlated ST 0601 feed, or None.
+let camera = Some(Point::new(38.8950, -77.0300, 0.0));
+let events = rid::tracked_picture(uas, None, uas_cot::now_us(), &Options::default(), &AffiliationRules::default(), camera);
+// events[0] is the aircraft with the headline; the takeoff marker links back
+// to it; events.last() is the camera ground target, linked to the aircraft.
+```
+
 ## Docs
 
 - [docs/integration.md](docs/integration.md): using it as a library (features, the API to depend on, MSRV, versioning)
